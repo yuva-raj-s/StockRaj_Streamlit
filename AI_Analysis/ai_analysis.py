@@ -17,6 +17,9 @@ from textblob import TextBlob
 import requests
 from bs4 import BeautifulSoup
 import json
+from AI_Analysis.Current_Data.current_data import display_current_data
+from SentimentAnalysis.sentiment_analysis import analyze_asset_sentiment
+from sooraj.lstm_prediction import main as lstm_main
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -255,88 +258,126 @@ def get_trading_signals(df):
         st.error(f"Error generating trading signals: {str(e)}")
         return []
 
-def show_ai_analysis():
-    """Display the AI analysis page"""
-    st.title("🤖 AI Analysis")
-    
-    # Stock selection
-    symbol = st.text_input("Enter stock symbol (e.g., RELIANCE, TCS):", "RELIANCE")
-    
-    if symbol:
-        # Get stock data
-        df = get_stock_data(symbol)
-        
-        if df is not None:
-            # Technical Analysis
-            st.header("📊 Technical Analysis")
-            
-            # Plot technical analysis
-            fig = plot_technical_analysis(df, symbol)
-            if fig:
-                st.plotly_chart(fig, use_container_width=True)
-            
-            # Trading Signals
-            st.header("🎯 Trading Signals")
-            signals = get_trading_signals(df)
-            if signals:
-                for signal in signals:
-                    st.info(signal)
-            else:
-                st.info("No significant trading signals detected")
-            
-            # Technical Indicators
-            st.header("📈 Technical Indicators")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.metric("RSI (14)", f"{df['RSI'].iloc[-1]:.2f}")
-                st.metric("MACD", f"{df['MACD'].iloc[-1]:.2f}")
-                st.metric("Signal Line", f"{df['Signal'].iloc[-1]:.2f}")
-            
-            with col2:
-                st.metric("20-day SMA", f"{df['SMA_20'].iloc[-1]:.2f}")
-                st.metric("20-day EMA", f"{df['EMA_20'].iloc[-1]:.2f}")
-                st.metric("Volume SMA", f"{df['Volume_SMA'].iloc[-1]:.0f}")
-            
-            # Sentiment Analysis
-            st.header("😊 Sentiment Analysis")
-            sentiment = get_sentiment_analysis(symbol)
-            if sentiment:
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    st.metric(
-                        "Sentiment",
-                        sentiment['sentiment_label'],
-                        f"{sentiment['average_sentiment']:.2f}"
-                    )
-                
-                with col2:
-                    st.metric("Articles Analyzed", sentiment['article_count'])
-                
-                with col3:
-                    # Sentiment gauge
-                    fig = go.Figure(go.Indicator(
-                        mode="gauge+number",
-                        value=sentiment['average_sentiment'],
-                        title={'text': "Sentiment Score"},
-                        gauge={
-                            'axis': {'range': [-1, 1]},
-                            'bar': {'color': "darkblue"},
-                            'steps': [
-                                {'range': [-1, -0.5], 'color': "red"},
-                                {'range': [-0.5, 0], 'color': "orange"},
-                                {'range': [0, 0.5], 'color': "lightgreen"},
-                                {'range': [0.5, 1], 'color': "green"}
-                            ]
-                        }
-                    ))
-                    fig.update_layout(height=200)
-                    st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.warning("No sentiment data available")
+def get_price_metrics(data):
+    current_price = data['Close'].iloc[-1]
+    open_price = data['Open'].iloc[-1]
+    high_price = data['High'].iloc[-1]
+    low_price = data['Low'].iloc[-1]
+    price_change = current_price - open_price
+    price_change_pct = (price_change / open_price) * 100
+    return current_price, open_price, high_price, low_price, price_change, price_change_pct
+
+def show_technical_indicators(data, info=None):
+    st.subheader("Technical Indicators")
+    cols = st.columns(4)
+    def safe_metric(val):
+        if pd.isna(val) or val is None:
+            return "N/A"
+        try:
+            return f"{val:.2f}"
+        except Exception:
+            return str(val)
+    with cols[0]:
+        st.metric("RSI", safe_metric(data['RSI'].iloc[-1]) if 'RSI' in data.columns else "N/A")
+        st.metric("MACD", safe_metric(data['MACD'].iloc[-1]) if 'MACD' in data.columns else "N/A")
+    with cols[1]:
+        st.metric("SMA 20", safe_metric(data['SMA_20'].iloc[-1]) if 'SMA_20' in data.columns else "N/A")
+        st.metric("SMA 50", safe_metric(data['SMA_50'].iloc[-1]) if 'SMA_50' in data.columns else "N/A")
+    with cols[2]:
+        st.metric("BB Upper", safe_metric(data['BB_Upper'].iloc[-1]) if 'BB_Upper' in data.columns else "N/A")
+        st.metric("BB Lower", safe_metric(data['BB_Lower'].iloc[-1]) if 'BB_Lower' in data.columns else "N/A")
+    with cols[3]:
+        if info:
+            st.metric("P/E Ratio", safe_metric(info.get('trailingPE', None)))
+            st.metric("P/B Ratio", safe_metric(info.get('priceToBook', None)))
         else:
-            st.error("Unable to fetch stock data")
+            st.metric("P/E Ratio", "N/A")
+            st.metric("P/B Ratio", "N/A")
+
+def show_technical_signals(data):
+    st.subheader("Trading Signal")
+    if 'Signal' in data.columns:
+        last_signal = data['Signal'].iloc[-1]
+        signal_text = "BUY" if last_signal == 1 else "SELL" if last_signal == -1 else "NEUTRAL"
+        st.info(f"Current Signal: {signal_text}")
+    else:
+        st.warning("Technical signals not available.")
+
+def show_sentiment_section(symbol):
+    st.header("Market Sentiment & News Analysis")
+    try:
+        articles_df, sentiment_summary, sentiment_bar_img, sentiment_gauge, stock_chart, ticker = analyze_asset_sentiment(symbol)
+        if articles_df is None or articles_df.empty:
+            st.warning("No news articles found for this symbol.")
+            return
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("### Market Sentiment")
+            st.markdown(sentiment_summary)
+            st.image(sentiment_bar_img)
+        with col2:
+            st.markdown("### Sentiment Gauge")
+            st.image(sentiment_gauge)
+        st.markdown("### Articles and Sentiment Analysis")
+        st.dataframe(articles_df, use_container_width=True)
+    except Exception as e:
+        st.error(f"Sentiment analysis error: {e}")
+
+def show_ai_analysis():
+    st.title("🤖 AI Analysis")
+    tab1, tab2, tab3 = st.tabs(["Current Market", "Prediction & Signals", "Sentiment Analysis"])
+
+    # --- Tab 1: Current Market ---
+    with tab1:
+        st.header("Current Market Data & Technicals")
+        symbol = st.text_input("Enter stock symbol (e.g., RELIANCE, TCS):", "RELIANCE", key="ai_analysis_symbol1")
+        chart_type = st.selectbox("Chart Type", ["Line", "Area", "Baseline", "Candles"], key="ai_analysis_chart_type1")
+        timeframe = st.selectbox("Timeframe", ["1D", "1W", "1M", "3M", "1Y", "ALL"], key="ai_analysis_timeframe1")
+        period_map = {"1D": "1d", "1W": "5d", "1M": "1mo", "3M": "3mo", "1Y": "1y", "ALL": "max"}
+        period = period_map[timeframe]
+        if symbol:
+            try:
+                ticker = yf.Ticker(f"{symbol}.NS")
+                data = ticker.history(period=period)
+                info = ticker.info
+                if data.empty:
+                    st.warning("No data found for this symbol.")
+                else:
+                    st.subheader("Price Analysis")
+                    current_price, open_price, high_price, low_price, price_change, price_change_pct = get_price_metrics(data)
+                    col1, col2, col3, col4, col5, col6 = st.columns(6)
+                    with col1:
+                        st.metric('Open', f'₹{open_price:.2f}')
+                    with col2:
+                        st.metric('High', f'₹{high_price:.2f}')
+                    with col3:
+                        st.metric('Low', f'₹{low_price:.2f}')
+                    with col4:
+                        st.metric('Current', f'₹{current_price:.2f}')
+                    with col5:
+                        st.metric('Change', f'₹{price_change:.2f}')
+                    with col6:
+                        st.metric('Change %', f'{price_change_pct:.2f}%')
+                    st.subheader("Stock Chart")
+                    display_current_data(data, chart_type)
+                    data_ind = calculate_technical_indicators(data)
+                    show_technical_indicators(data_ind, info)
+                    data_ind = generate_signals(data_ind)
+                    show_technical_signals(data_ind)
+            except Exception as e:
+                st.error(f"Error fetching/displaying data: {e}")
+
+    # --- Tab 2: Prediction & Signals ---
+    with tab2:
+        st.header("Prediction & Signals (LSTM)")
+        lstm_main()
+
+    # --- Tab 3: Sentiment Analysis ---
+    with tab3:
+        st.header("Sentiment Analysis & News")
+        symbol3 = st.text_input("Enter stock symbol (e.g., RELIANCE, TCS):", "RELIANCE", key="ai_analysis_symbol3")
+        if symbol3:
+            show_sentiment_section(symbol3)
 
 if __name__ == "__main__":
     show_ai_analysis() 

@@ -292,7 +292,7 @@ def sentiment_bar(positive, neutral, negative):
 
 def analyze_asset_sentiment(asset_name):
     logging.info(f"Starting sentiment analysis for asset: {asset_name}")
-    articles = fetch_articles(asset_name, max_articles=30)
+    articles = fetch_articles(asset_name, max_articles=10)
     analyzed_articles = [analyze_article_sentiment(article) for article in articles]
     for article in analyzed_articles:
         time_weight = calculate_time_weight(article["date"])
