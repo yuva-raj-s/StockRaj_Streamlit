@@ -1,0 +1,13 @@
+Metadata-Version: 2.1
+Name: stockraj
+Version: 1.0.0
+Requires-Dist: fastapi
+Requires-Dist: uvicorn
+Requires-Dist: pandas
+Requires-Dist: numpy
+Requires-Dist: yfinance
+Requires-Dist: scikit-learn
+Requires-Dist: tensorflow
+Requires-Dist: plotly
+Requires-Dist: streamlit
+Requires-Dist: ta

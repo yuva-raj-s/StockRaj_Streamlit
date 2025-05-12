@@ -1,0 +1,1 @@
+[{"symbol": "Reliance", "price": 1500.0, "type": "Above", "status": "active", "created_at": "2025-05-05T07:05:14.463923", "triggered_at": null, "triggered_price": null}, {"symbol": "infy.NS", "price": 1500.0, "type": "Below", "created_at": "2025-05-05T07:13:23.156682", "status": "active", "triggered_at": null, "triggered_price": null}]

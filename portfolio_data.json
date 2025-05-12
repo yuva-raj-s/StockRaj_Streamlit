@@ -1,0 +1,23 @@
+{
+    "transactions": [
+        {
+            "symbol": "TCS.NS",
+            "quantity": 1,
+            "price": 3800.0,
+            "date": "2025-05-12",
+            "type": "BUY",
+            "notes": ""
+        },
+        {
+            "symbol": "TCS.NS",
+            "quantity": -1,
+            "price": 3800.0,
+            "date": "2025-05-12",
+            "type": "SELL",
+            "notes": ""
+        }
+    ],
+    "holdings": {},
+    "goals": [],
+    "notes": {}
+}
