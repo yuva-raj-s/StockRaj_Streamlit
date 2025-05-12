@@ -40,6 +40,7 @@ class WatchlistManager:
                 return [{
                     'symbol': info.get('symbol', ''),
                     'shortname': info.get('shortName', ''),
+                    'name': info.get('longName', info.get('shortName', '')),
                     'exchange': info.get('exchange', ''),
                     'market_cap': info.get('marketCap', 0),
                     'pe_ratio': info.get('trailingPE', 0),

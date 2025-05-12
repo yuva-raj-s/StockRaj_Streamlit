@@ -71,7 +71,8 @@ def get_stock_suggestions(query):
                 if info and 'regularMarketPrice' in info:
                     suggestions.append({
                         'symbol': query + suffix,
-                        'name': info.get('shortName', query + suffix),
+                        'name': info.get('longName', info.get('shortName', query + suffix)),
+                        'shortname': info.get('shortName', ''),
                         'sector': info.get('sector', 'N/A'),
                         'market_cap': info.get('marketCap', 0)
                     })
@@ -85,7 +86,8 @@ def get_stock_suggestions(query):
             if info and 'regularMarketPrice' in info:
                 suggestions.append({
                     'symbol': query,
-                    'name': info.get('shortName', query),
+                    'name': info.get('longName', info.get('shortName', query)),
+                    'shortname': info.get('shortName', ''),
                     'sector': info.get('sector', 'N/A'),
                     'market_cap': info.get('marketCap', 0)
                 })
