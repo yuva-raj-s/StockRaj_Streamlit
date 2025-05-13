@@ -563,20 +563,20 @@ class IndianStockChatbot:
     def get_market_activity(self) -> dict:
         """Get overall market activity and indices using enhanced yfinance features"""
         try:
-            # Get Nifty 50 data
+            # Get Nifty 50 data with real-time updates
             nifty = yf.Ticker("^NSEI")
-            nifty_data = nifty.history(period="1d")
+            nifty_data = nifty.history(period="1d", interval="1m")  # Changed to 1-minute intervals
             nifty_info = nifty.info
             
-            # Get Sensex data
+            # Get Sensex data with real-time updates
             sensex = yf.Ticker("^BSESN")
-            sensex_data = sensex.history(period="1d")
+            sensex_data = sensex.history(period="1d", interval="1m")  # Changed to 1-minute intervals
             sensex_info = sensex.info
             
-            # Get market status
+            # Get market status with real-time check
             market_status = "Open" if self.is_market_open() else "Closed"
             
-            # Get sector performance
+            # Get sector performance with real-time data
             sectors = {
                 "IT": "^CNXIT",
                 "Bank": "^NSEBANK",
@@ -589,18 +589,19 @@ class IndianStockChatbot:
             for sector_name, sector_symbol in sectors.items():
                 try:
                     sector_ticker = yf.Ticker(sector_symbol)
-                    sector_data = sector_ticker.history(period="1d")
+                    sector_data = sector_ticker.history(period="1d", interval="1m")  # Changed to 1-minute intervals
                     if not sector_data.empty:
                         change_pct = ((sector_data['Close'].iloc[-1] - sector_data['Open'].iloc[0]) / 
                                     sector_data['Open'].iloc[0]) * 100
                         sector_performance[sector_name] = {
                             "current": sector_data['Close'].iloc[-1],
-                            "change_pct": change_pct
+                            "change_pct": change_pct,
+                            "last_update": sector_data.index[-1].strftime("%H:%M:%S")
                         }
                 except Exception as e:
                     logging.error(f"Error fetching {sector_name} sector data: {str(e)}")
             
-            # Calculate changes
+            # Calculate changes using latest data
             nifty_change = nifty_data['Close'].iloc[-1] - nifty_data['Open'].iloc[0]
             nifty_change_pct = (nifty_change / nifty_data['Open'].iloc[0]) * 100
             
@@ -619,7 +620,8 @@ class IndianStockChatbot:
                     "low": nifty_data['Low'].iloc[-1],
                     "volume": nifty_data['Volume'].iloc[-1],
                     "open": nifty_data['Open'].iloc[0],
-                    "prev_close": nifty_info.get("previousClose", 0)
+                    "prev_close": nifty_info.get("previousClose", 0),
+                    "last_update": nifty_data.index[-1].strftime("%H:%M:%S")
                 },
                 "sensex": {
                     "current": sensex_data['Close'].iloc[-1],
@@ -629,7 +631,8 @@ class IndianStockChatbot:
                     "low": sensex_data['Low'].iloc[-1],
                     "volume": sensex_data['Volume'].iloc[-1],
                     "open": sensex_data['Open'].iloc[0],
-                    "prev_close": sensex_info.get("previousClose", 0)
+                    "prev_close": sensex_info.get("previousClose", 0),
+                    "last_update": sensex_data.index[-1].strftime("%H:%M:%S")
                 },
                 "market_status": market_status,
                 "advance_decline": advance_decline,
@@ -867,19 +870,70 @@ class IndianStockChatbot:
             return None
 
     def is_market_open(self) -> bool:
-        """Check if Indian market is currently open"""
+        """Check if Indian market is currently open with real-time data"""
         try:
             now = datetime.now()
-            if now.weekday() >= 5:  # Weekend
+            
+            # Check if it's a weekend
+            if now.weekday() >= 5:  # Saturday (5) or Sunday (6)
                 return False
             
+            # Check if it's a holiday (you can add more holidays)
+            holidays = [
+                "2024-01-26",  # Republic Day
+                "2024-03-08",  # Mahashivratri
+                "2024-03-25",  # Holi
+                "2024-04-09",  # Ram Navami
+                "2024-04-11",  # Mahavir Jayanti
+                "2024-04-17",  # Good Friday
+                "2024-05-01",  # Maharashtra Day
+                "2024-05-20",  # Lok Sabha Elections
+                "2024-06-17",  # Bakri Id
+                "2024-07-17",  # Muharram
+                "2024-08-15",  # Independence Day
+                "2024-10-02",  # Gandhi Jayanti
+                "2024-11-01",  # Diwali-Laxmi Pujan
+                "2024-11-15",  # Gurunanak Jayanti
+                "2024-12-25"   # Christmas
+            ]
+            
+            if now.strftime("%Y-%m-%d") in holidays:
+                return False
+            
+            # Define market hours
             market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
             market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
             
-            return market_open <= now <= market_close
+            # Check if current time is within market hours
+            is_open = market_open <= now <= market_close
+            
+            # Additional check using NSE data to confirm market status
+            try:
+                nifty = yf.Ticker("^NSEI")
+                nifty_data = nifty.history(period="1d", interval="1m")
+                if not nifty_data.empty:
+                    last_update = nifty_data.index[-1]
+                    time_diff = (now - last_update).total_seconds() / 60
+                    # If last update is more than 5 minutes old, market might be closed
+                    if time_diff > 5:
+                        is_open = False
+            except:
+                pass  # If we can't get NSE data, rely on time-based check
+            
+            return is_open
+            
         except Exception as e:
             logging.error(f"Error checking market status: {str(e)}")
-            return False
+            # Fallback to time-based check if there's an error
+            try:
+                now = datetime.now()
+                if now.weekday() >= 5:  # Weekend
+                    return False
+                market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
+                market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+                return market_open <= now <= market_close
+            except:
+                return False
 
     def get_advance_decline_ratio(self) -> dict:
         """Get advance-decline ratio for the market"""
@@ -1084,25 +1138,24 @@ class IndianStockChatbot:
             
             elif intent == 'market_activity':
                 if data:
-                    response = (
-                        f"Market Status: {data['market_status']}\n"
-                        f"Nifty 50: ₹{data['nifty']['current']:.2f} ({data['nifty']['change_pct']:+.2f}%)\n"
-                        f"High: ₹{data['nifty']['high']:.2f}, Low: ₹{data['nifty']['low']:.2f}\n"
-                        f"Sensex: ₹{data['sensex']['current']:.2f} ({data['sensex']['change_pct']:+.2f}%)\n"
-                        f"High: ₹{data['sensex']['high']:.2f}, Low: ₹{data['sensex']['low']:.2f}\n"
-                    )
+                    # Build response without market status
+                    response = []
+                    response.append(f"Nifty 50: ₹{data['nifty']['current']:.2f} ({data['nifty']['change_pct']:+.2f}%)")
+                    response.append(f"High: ₹{data['nifty']['high']:.2f}, Low: ₹{data['nifty']['low']:.2f}")
+                    response.append(f"Sensex: ₹{data['sensex']['current']:.2f} ({data['sensex']['change_pct']:+.2f}%)")
+                    response.append(f"High: ₹{data['sensex']['high']:.2f}, Low: ₹{data['sensex']['low']:.2f}")
                     
                     # Add sector performance
                     if data.get('sector_performance'):
-                        response += "\nSector Performance:\n"
+                        response.append("\nSector Performance:")
                         for sector, perf in data['sector_performance'].items():
-                            response += f"{sector}: {perf['change_pct']:+.2f}%\n"
+                            response.append(f"{sector}: {perf['change_pct']:+.2f}%")
                     
                     if data['advance_decline']['ratio'] != float('inf'):
-                        response += f"\nAdvance-Decline Ratio: {data['advance_decline']['ratio']:.2f}\n"
+                        response.append(f"\nAdvance-Decline Ratio: {data['advance_decline']['ratio']:.2f}")
                     
-                    response += f"\nLast Updated: {data['last_updated']}"
-                    return response
+                    response.append(f"\nLast Updated: {data['last_updated']}")
+                    return "\n".join(response)
             
             elif intent == 'sentiment_analysis' and data:
                 if 'error' in data:

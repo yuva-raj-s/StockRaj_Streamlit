@@ -5,36 +5,63 @@ from datetime import datetime
 import time
 import json
 import os
+import sys
 from textblob import TextBlob
+
+# Add the current directory to Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
+
+from chatbot import IndianStockChatbot as MLChatbot  # Import using absolute path
 
 class IndianStockChatbot:
     def __init__(self):
-        """Initialize the chatbot"""
+        """Initialize the chatbot with ML capabilities"""
+        self.ml_chatbot = MLChatbot()  # Initialize the ML-powered chatbot
         self.market_status = self.get_market_status()
         self.watchlist = self.load_watchlist()
         self.portfolio = self.load_portfolio()
     
     def get_market_status(self):
-        """Get current market status"""
+        """Get current market status using real-time data"""
         try:
-            nifty = yf.Ticker("^NSEI")
-            info = nifty.info
+            now = datetime.now()
             
-            if 'regularMarketTime' in info:
-                market_time = datetime.fromtimestamp(info['regularMarketTime'])
-                now = datetime.now()
+            # Check if it's a weekend
+            if now.weekday() >= 5:  # Saturday (5) or Sunday (6)
+                return "Closed"
+            
+            # Define market hours
+            market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
+            market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+            
+            # Get real-time NSE data to confirm market status
+            nifty = yf.Ticker("^NSEI")
+            nifty_data = nifty.history(period="1d", interval="1m")
+            
+            if not nifty_data.empty:
+                last_update = nifty_data.index[-1]
+                time_diff = (now - last_update).total_seconds() / 60
                 
-                # Market hours: 9:15 AM to 3:30 PM IST
-                market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
-                market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
-                
-                if market_open <= now <= market_close:
+                # If we have recent data (within last 5 minutes) and within market hours
+                if time_diff <= 5 and market_open <= now <= market_close:
                     return "Open"
                 else:
                     return "Closed"
-            return "Unknown"
+            
+            # Fallback to time-based check
+            return "Open" if market_open <= now <= market_close else "Closed"
+            
         except Exception as e:
-            return "Unknown"
+            # Fallback to time-based check if there's an error
+            try:
+                now = datetime.now()
+                market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
+                market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+                return "Open" if market_open <= now <= market_close else "Closed"
+            except:
+                return "Unknown"
     
     def load_watchlist(self):
         """Load watchlist data"""
@@ -82,28 +109,48 @@ class IndianStockChatbot:
             return None
     
     def get_market_activity(self):
-        """Get market activity data"""
+        """Get real-time market activity data"""
         try:
-            # Get Nifty 50 data
+            # Get Nifty 50 data with real-time updates
             nifty = yf.Ticker("^NSEI")
-            nifty_info = nifty.info
+            nifty_data = nifty.history(period="1d", interval="1m")  # Use 1-minute intervals for real-time data
             
-            # Get Sensex data
+            # Get Sensex data with real-time updates
             sensex = yf.Ticker("^BSESN")
-            sensex_info = sensex.info
+            sensex_data = sensex.history(period="1d", interval="1m")  # Use 1-minute intervals for real-time data
             
-            if nifty_info and sensex_info:
+            if not nifty_data.empty and not sensex_data.empty:
+                # Get the latest data points
+                nifty_latest = nifty_data.iloc[-1]
+                sensex_latest = sensex_data.iloc[-1]
+                
+                # Calculate changes using the latest data
+                nifty_change = nifty_latest['Close'] - nifty_data.iloc[0]['Open']
+                nifty_change_pct = (nifty_change / nifty_data.iloc[0]['Open']) * 100
+                
+                sensex_change = sensex_latest['Close'] - sensex_data.iloc[0]['Open']
+                sensex_change_pct = (sensex_change / sensex_data.iloc[0]['Open']) * 100
+                
                 return {
                     'nifty': {
-                        'current': nifty_info.get('regularMarketPrice', 0),
-                        'change_pct': nifty_info.get('regularMarketChangePercent', 0)
+                        'current': nifty_latest['Close'],
+                        'change_pct': nifty_change_pct,
+                        'high': nifty_data['High'].max(),
+                        'low': nifty_data['Low'].min(),
+                        'volume': nifty_latest['Volume'],
+                        'last_update': nifty_data.index[-1].strftime("%H:%M:%S")
                     },
                     'sensex': {
-                        'current': sensex_info.get('regularMarketPrice', 0),
-                        'change_pct': sensex_info.get('regularMarketChangePercent', 0)
+                        'current': sensex_latest['Close'],
+                        'change_pct': sensex_change_pct,
+                        'high': sensex_data['High'].max(),
+                        'low': sensex_data['Low'].min(),
+                        'volume': sensex_latest['Volume'],
+                        'last_update': sensex_data.index[-1].strftime("%H:%M:%S")
                     },
-                    'market_status': self.market_status,
-                    'advance_decline': self.get_advance_decline_ratio()
+                    'market_status': self.get_market_status(),
+                    'advance_decline': self.get_advance_decline_ratio(),
+                    'last_updated': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 }
             return None
         except Exception as e:
@@ -157,35 +204,96 @@ class IndianStockChatbot:
             return None
     
     def process_query(self, query):
-        """Process user query and generate response"""
+        """Process user query using ML models and generate response"""
         try:
-            # Convert query to lowercase for easier matching
+            # First try to get a response from the ML chatbot
+            try:
+                ml_response = self.ml_chatbot.process_query(query)
+                if ml_response and ml_response != "I'm having trouble understanding. Could you please rephrase your question?":
+                    return ml_response
+            except Exception as ml_error:
+                st.error(f"ML processing error: {str(ml_error)}")
+            
+            # If ML chatbot fails or returns a generic response, try specific query handling
             query = query.lower()
             
             # Check for stock price query
-            if "price" in query or "value" in query:
-                # Extract stock symbol
-                words = query.split()
-                for word in words:
-                    if word.upper() in ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK"]:
-                        info = self.get_stock_info(word)
+            if any(word in query for word in ["price", "value", "current price", "stock price"]):
+                # Extract stock symbol using ML chatbot's symbol detection
+                try:
+                    symbol = self.ml_chatbot.get_stock_symbol(query)
+                    if symbol:
+                        info = self.get_stock_info(symbol)
                         if info:
                             return f"The current price of {info['name']} ({info['symbol']}) is ₹{info['price']:,.2f} ({info['change_percent']:+.2f}%)"
+                except:
+                    # Fallback to basic symbol detection
+                    words = query.split()
+                    for word in words:
+                        if word.upper() in ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK"]:
+                            info = self.get_stock_info(word)
+                            if info:
+                                return f"The current price of {info['name']} ({info['symbol']}) is ₹{info['price']:,.2f} ({info['change_percent']:+.2f}%)"
             
             # Check for market activity query
             if "market" in query and ("activity" in query or "status" in query):
                 activity = self.get_market_activity()
                 if activity:
-                    return f"Market Status: {activity['market_status']}\nNifty 50: ₹{activity['nifty']['current']:,.2f} ({activity['nifty']['change_pct']:+.2f}%)\nSensex: ₹{activity['sensex']['current']:,.2f} ({activity['sensex']['change_pct']:+.2f}%)"
+                    return f"Nifty 50: ₹{activity['nifty']['current']:,.2f} ({activity['nifty']['change_pct']:+.2f}%)\nSensex: ₹{activity['sensex']['current']:,.2f} ({activity['sensex']['change_pct']:+.2f}%)"
             
             # Check for sentiment query
             if "sentiment" in query:
-                words = query.split()
-                for word in words:
-                    if word.upper() in ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK"]:
-                        sentiment = self.get_sentiment(f"{word}.NS")
-                        if sentiment:
-                            return f"The sentiment for {word} is {sentiment['label']} (Score: {sentiment['average']:.2f})"
+                try:
+                    # Use ML chatbot's sentiment analysis
+                    symbol = self.ml_chatbot.get_stock_symbol(query)
+                    if symbol:
+                        sentiment_data = self.ml_chatbot.get_sentiment_analysis(symbol)
+                        if sentiment_data:
+                            return (
+                                f"Sentiment Analysis for {symbol}:\n"
+                                f"Overall Sentiment Score: {sentiment_data['sentiment_score']:.2f}\n"
+                                f"Market Context: {sentiment_data['market_context']}\n"
+                                f"Positive News: {sentiment_data['positive']}\n"
+                                f"Negative News: {sentiment_data['negative']}\n"
+                                f"Neutral News: {sentiment_data['neutral']}\n"
+                                f"Total News Analyzed: {sentiment_data['total_news']}"
+                            )
+                except:
+                    # Fallback to basic sentiment analysis
+                    words = query.split()
+                    for word in words:
+                        if word.upper() in ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK"]:
+                            sentiment = self.get_sentiment(f"{word}.NS")
+                            if sentiment:
+                                return f"The sentiment for {word} is {sentiment['label']} (Score: {sentiment['average']:.2f})"
+            
+            # Check for trading signals query
+            if any(phrase in query for phrase in ["trading signal", "buy signal", "sell signal", "when to buy", "when to sell"]):
+                try:
+                    symbol = self.ml_chatbot.get_stock_symbol(query)
+                    if symbol:
+                        signals = self.ml_chatbot.get_trading_signals(symbol)
+                        if signals:
+                            return (
+                                f"Trading Signals for {signals['symbol']}:\n"
+                                f"Current Price: ₹{signals['current_price']:.2f}\n"
+                                f"RSI Signal: {signals['signals']['RSI_Signal']}\n"
+                                f"MACD Signal: {signals['signals']['MACD_Signal']}\n"
+                                f"Bollinger Bands Signal: {signals['signals']['BB_Signal']}\n"
+                                f"Overall Signal: {signals['overall_signal']}"
+                            )
+                except Exception as e:
+                    st.error(f"Error getting trading signals: {str(e)}")
+            
+            # Check for market terms query
+            if any(word in query for word in ["what is", "explain", "define", "meaning of", "tell me about"]):
+                try:
+                    # Use ML chatbot's market terms
+                    for term, explanation in self.ml_chatbot.market_terms.items():
+                        if term in query:
+                            return f"{term.upper()}: {explanation}"
+                except:
+                    pass
             
             # Check for watchlist query
             if "watchlist" in query:
@@ -204,8 +312,12 @@ class IndianStockChatbot:
                     return f"Your portfolio contains: {', '.join(holdings)}"
                 return "Your portfolio is empty"
             
-            # Default response for unrecognized queries
-            return "I'm not sure about that. You can ask me about stock prices, market activity, sentiment analysis, your watchlist, or portfolio."
+            # If no specific response is generated, try ML chatbot's detailed response
+            try:
+                intent, confidence, sentiment = self.ml_chatbot.classify_intent(query)
+                return self.ml_chatbot.generate_detailed_response(intent, None, sentiment)
+            except:
+                return "I'm not sure about that. You can ask me about stock prices, market activity, sentiment analysis, your watchlist, or portfolio."
             
         except Exception as e:
             return f"I encountered an error: {str(e)}"
