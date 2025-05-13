@@ -186,131 +186,180 @@ def predict_future_prices(model, last_sequence, scaler, days_to_predict: int = 2
     
     return future_predictions
 
-def create_interactive_plot(df: pd.DataFrame, predictions: np.ndarray, ticker: str, fib_levels: dict):
-    """Create interactive plot with technical indicators"""
-    fig = make_subplots(rows=4, cols=1, shared_xaxes=True, 
-                       vertical_spacing=0.05,
-                       row_heights=[0.5, 0.2, 0.15, 0.15])
+def create_interactive_plot(df, predictions, ticker, fib_levels):
+    fig = make_subplots(
+        rows=4, cols=1, shared_xaxes=True, 
+        vertical_spacing=0.05,
+        row_heights=[0.5, 0.2, 0.15, 0.15]
+    )
 
-    # Candlestick chart
-    fig.add_trace(go.Candlestick(x=df.index,
-                                open=df['Open'],
-                                high=df['High'],
-                                low=df['Low'],
-                                close=df['Close'],
-                                name='Price'),
-                  row=1, col=1)
+    # Candlestick chart with custom colors
+    fig.add_trace(go.Candlestick(
+        x=df.index,
+        open=df['Open'],
+        high=df['High'],
+        low=df['Low'],
+        close=df['Close'],
+        name='Price',
+        increasing_line_color='limegreen',
+        decreasing_line_color='crimson',
+        showlegend=True
+    ), row=1, col=1)
 
     # Add predictions
     future_dates = [df.index[-1] + timedelta(days=x+1) for x in range(len(predictions))]
-    fig.add_trace(go.Scatter(x=future_dates,
-                            y=predictions.flatten(),
-                            name='Predicted Price',
-                            line=dict(color='red', dash='dash')),
-                  row=1, col=1)
+    fig.add_trace(go.Scatter(
+        x=future_dates,
+        y=predictions.flatten(),
+        name='Predicted Price',
+        line=dict(color='deepskyblue', dash='dot', width=3),
+        mode='lines+markers',
+        marker=dict(size=8, color='deepskyblue', symbol='star'),
+        showlegend=True
+    ), row=1, col=1)
 
-    # Add Moving Averages
-    fig.add_trace(go.Scatter(x=df.index, y=df['SMA_20'],
-                            name='SMA 20',
-                            line=dict(color='blue')),
-                  row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['SMA_50'],
-                            name='SMA 50',
-                            line=dict(color='orange')),
-                  row=1, col=1)
+    # Overlays: SMA, EMA, Bollinger Bands
+    if 'SMA_20' in df.columns:
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df['SMA_20'],
+            name='SMA 20',
+            line=dict(color='orange', width=2, dash='solid'),
+            showlegend=True
+        ), row=1, col=1)
+    if 'SMA_50' in df.columns:
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df['SMA_50'],
+            name='SMA 50',
+            line=dict(color='purple', width=2, dash='dot'),
+            showlegend=True
+        ), row=1, col=1)
+    if 'EMA_20' in df.columns:
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df['EMA_20'],
+            name='EMA 20',
+            line=dict(color='green', width=2, dash='dash'),
+            showlegend=True
+        ), row=1, col=1)
+    if 'BB_Upper' in df.columns and 'BB_Lower' in df.columns:
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df['BB_Upper'],
+            name='BB Upper',
+            line=dict(color='gray', dash='dash', width=1),
+            showlegend=True
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df['BB_Lower'],
+            name='BB Lower',
+            line=dict(color='gray', dash='dash', width=1),
+            fill='tonexty',
+            fillcolor='rgba(100,100,255,0.05)',
+            showlegend=True
+        ), row=1, col=1)
 
-    # Add Bollinger Bands
-    fig.add_trace(go.Scatter(x=df.index, y=df['BB_Upper'],
-                            name='BB Upper',
-                            line=dict(color='gray', dash='dash')),
-                  row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['BB_Lower'],
-                            name='BB Lower',
-                            line=dict(color='gray', dash='dash')),
-                  row=1, col=1)
-
-    # Add Fibonacci levels
-    for level, price in fib_levels.items():
-        fig.add_hline(y=price, line_dash="dash", line_color="purple",
-                     annotation_text=f"Fib {level}",
-                     row=1, col=1)
-
-    # Add buy/sell signals (only significant ones)
-    buy_signals = df[(df['Signal'] == 1) & (df['Is_Anomaly'] == False)]
-    sell_signals = df[(df['Signal'] == -1) & (df['Is_Anomaly'] == False)]
-    
-    fig.add_trace(go.Scatter(x=buy_signals.index,
-                            y=buy_signals['Close'],
-                            mode='markers',
-                            name='Buy Signal',
-                            marker=dict(symbol='triangle-up',
-                                      size=12,
-                                      color='green')),
-                  row=1, col=1)
-    
-    fig.add_trace(go.Scatter(x=sell_signals.index,
-                            y=sell_signals['Close'],
-                            mode='markers',
-                            name='Sell Signal',
-                            marker=dict(symbol='triangle-down',
-                                      size=12,
-                                      color='red')),
-                  row=1, col=1)
-
-    # Add anomaly markers
-    anomalies = df[df['Is_Anomaly']]
-    fig.add_trace(go.Scatter(x=anomalies.index,
-                            y=anomalies['Close'],
-                            mode='markers',
-                            name='Anomaly',
-                            marker=dict(symbol='star',
-                                      size=15,
-                                      color='yellow')),
-                  row=1, col=1)
+    # Buy/Sell signals with custom icons
+    buy_signals = df[(df['Signal'] == 1)]
+    sell_signals = df[(df['Signal'] == -1)]
+    fig.add_trace(go.Scatter(
+        x=buy_signals.index,
+        y=buy_signals['Close'],
+        mode='markers',
+        name='Buy Signal',
+        marker=dict(symbol='triangle-up', size=16, color='limegreen', line=dict(width=2, color='white')),
+        showlegend=True,
+        hovertemplate='Buy Signal<br>Date: %{x}<br>Price: %{y:.2f}'
+    ), row=1, col=1)
+    fig.add_trace(go.Scatter(
+        x=sell_signals.index,
+        y=sell_signals['Close'],
+        mode='markers',
+        name='Sell Signal',
+        marker=dict(symbol='triangle-down', size=16, color='crimson', line=dict(width=2, color='white')),
+        showlegend=True,
+        hovertemplate='Sell Signal<br>Date: %{x}<br>Price: %{y:.2f}'
+    ), row=1, col=1)
 
     # MACD
-    fig.add_trace(go.Scatter(x=df.index, y=df['MACD'],
-                            name='MACD',
-                            line=dict(color='blue')),
-                  row=2, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['MACD_Signal'],
-                            name='Signal',
-                            line=dict(color='orange')),
-                  row=2, col=1)
-    fig.add_trace(go.Bar(x=df.index, y=df['MACD_Hist'],
-                        name='Histogram'),
-                  row=2, col=1)
+    if 'MACD' in df.columns and 'MACD_Signal' in df.columns and 'MACD_Hist' in df.columns:
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df['MACD'],
+            name='MACD',
+            line=dict(color='blue', width=2),
+            showlegend=True
+        ), row=2, col=1)
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df['MACD_Signal'],
+            name='MACD Signal',
+            line=dict(color='orange', width=2, dash='dot'),
+            showlegend=True
+        ), row=2, col=1)
+        fig.add_trace(go.Bar(
+            x=df.index, y=df['MACD_Hist'],
+            name='MACD Hist',
+            marker_color='rgba(100,100,255,0.3)',
+            opacity=0.7,
+            showlegend=True
+        ), row=2, col=1)
 
     # RSI
-    fig.add_trace(go.Scatter(x=df.index, y=df['RSI'],
-                            name='RSI',
-                            line=dict(color='purple')),
-                  row=3, col=1)
-    fig.add_hline(y=70, line_dash="dash", line_color="red", row=3, col=1)
-    fig.add_hline(y=30, line_dash="dash", line_color="green", row=3, col=1)
+    if 'RSI' in df.columns:
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df['RSI'],
+            name='RSI',
+            line=dict(color='purple', width=2),
+            showlegend=True
+        ), row=3, col=1)
+        fig.add_trace(go.Scatter(
+            x=df.index, y=[70]*len(df),
+            name='Overbought',
+            line=dict(color='red', dash='dash', width=1),
+            showlegend=False
+        ), row=3, col=1)
+        fig.add_trace(go.Scatter(
+            x=df.index, y=[30]*len(df),
+            name='Oversold',
+            line=dict(color='green', dash='dash', width=1),
+            showlegend=False
+        ), row=3, col=1)
 
-    # Z-Score (Anomaly Detection)
-    fig.add_trace(go.Scatter(x=df.index, y=df['Z_Score'],
-                            name='Z-Score',
-                            line=dict(color='orange')),
-                  row=4, col=1)
-    fig.add_hline(y=2, line_dash="dash", line_color="red", row=4, col=1)
-    fig.add_hline(y=-2, line_dash="dash", line_color="red", row=4, col=1)
+    # Volume as a bar chart
+    fig.add_trace(go.Bar(
+        x=df.index,
+        y=df['Volume'],
+        name='Volume',
+        marker_color='rgba(100,100,255,0.3)',
+        opacity=0.5,
+        showlegend=True
+    ), row=4, col=1)
 
-    # Update layout
+    # Fibonacci levels
+    for level, price in fib_levels.items():
+        fig.add_hline(y=price, line_dash="dot", line_color="#FFD700",
+                      annotation_text=f"Fib {level}", annotation_position="top right",
+                      row=1, col=1)
+
+    # Layout beautification
     fig.update_layout(
-        title=f'{ticker} Stock Analysis',
-        yaxis_title='Price',
-        yaxis2_title='MACD',
-        yaxis3_title='RSI',
-        yaxis4_title='Z-Score',
-        xaxis_rangeslider_visible=False,
+        template='plotly_dark',
+        title=f'{ticker} LSTM Prediction & Technicals',
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1, bgcolor='rgba(0,0,0,0)'),
+        margin=dict(l=20, r=20, t=60, b=20),
+        plot_bgcolor='rgba(10,10,30,0.95)',
+        paper_bgcolor='rgba(10,10,30,1)',
+        font=dict(family='Segoe UI', size=14, color='white'),
+        hovermode='x unified',
         height=1000
     )
-
     return fig
 
 def main():
+    # Only set page config if running as standalone app
+    if __name__ == '__main__':
+        st.set_page_config(
+            page_title="LSTM Stock Prediction",
+            page_icon="📈",
+            layout="wide"
+        )
+    
     st.title('Advanced Stock Price Prediction and Analysis')
     
     # Sidebar inputs

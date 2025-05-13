@@ -102,23 +102,72 @@ def get_stock_suggestions(query):
         logger.error(f"Error getting suggestions: {str(e)}")
         return []
 
-def get_stock_data(symbol, period="6mo"):
+def get_stock_data(symbol, period="6mo", interval="1d"):
     """Get stock data with technical indicators"""
     try:
-        # Add .NS suffix if not present
-        if not symbol.endswith('.NS'):
+        # Format the symbol for Indian stocks
+        if not symbol.endswith(('.NS', '.BO', '.NSE', '.BSE')):
             symbol = f"{symbol}.NS"
         
-        # Get historical data
+        # Get historical data with proper interval
         ticker = yf.Ticker(symbol)
-        df = ticker.history(period=period)
+        df = ticker.history(period=period, interval=interval, prepost=True)  # Added prepost for real-time data
         
         if df.empty:
-            st.error(f"No data available for {symbol}")
-            return None
+            # Try alternative exchanges if .NS fails
+            for suffix in ['.BO', '.NSE', '.BSE']:
+                if not symbol.endswith(suffix):
+                    alt_symbol = f"{symbol.split('.')[0]}{suffix}"
+                    alt_ticker = yf.Ticker(alt_symbol)
+                    alt_df = alt_ticker.history(period=period, interval=interval, prepost=True)
+                    if not alt_df.empty:
+                        df = alt_df
+                        break
+            
+            if df.empty:
+                st.error(f"No data available for {symbol}. Please check the symbol and try again.")
+                return None
         
         # Calculate technical indicators
-        df = calculate_technical_indicators(df)
+        try:
+            # RSI
+            rsi = RSIIndicator(close=df['Close'], window=14)
+            df['RSI'] = rsi.rsi()
+            
+            # MACD
+            macd = MACD(close=df['Close'])
+            df['MACD'] = macd.macd()
+            df['MACD_Signal'] = macd.macd_signal()
+            df['MACD_Hist'] = macd.macd_diff()
+            
+            # Bollinger Bands
+            bb = BollingerBands(close=df['Close'])
+            df['BB_Upper'] = bb.bollinger_hband()
+            df['BB_Middle'] = bb.bollinger_mavg()
+            df['BB_Lower'] = bb.bollinger_lband()
+            
+            # Moving Averages
+            df['SMA_20'] = ta.trend.sma_indicator(df['Close'], window=20)
+            df['SMA_50'] = ta.trend.sma_indicator(df['Close'], window=50)
+            df['EMA_20'] = ta.trend.ema_indicator(df['Close'], window=20)
+            
+            # Generate signals
+            df['Signal'] = 0  # Initialize signal column
+            
+            # MACD Signal
+            df.loc[(df['MACD'] > df['MACD_Signal']) & (df['MACD'].shift(1) <= df['MACD_Signal'].shift(1)), 'Signal'] = 1
+            df.loc[(df['MACD'] < df['MACD_Signal']) & (df['MACD'].shift(1) >= df['MACD_Signal'].shift(1)), 'Signal'] = -1
+            
+            # RSI Signal
+            df.loc[df['RSI'] < 30, 'Signal'] = 1  # Oversold
+            df.loc[df['RSI'] > 70, 'Signal'] = -1  # Overbought
+            
+            # Bollinger Bands Signal
+            df.loc[df['Close'] < df['BB_Lower'], 'Signal'] = 1  # Price below lower band
+            df.loc[df['Close'] > df['BB_Upper'], 'Signal'] = -1  # Price above upper band
+            
+        except Exception as e:
+            st.warning(f"Some technical indicators could not be calculated: {str(e)}")
         
         return df
     except Exception as e:
@@ -329,41 +378,94 @@ def show_ai_analysis():
 
     # --- Tab 1: Current Market ---
     with tab1:
-        st.header("Current Market Data & Technicals")
-        symbol = st.text_input("Enter stock symbol (e.g., RELIANCE, TCS):", "RELIANCE", key="ai_analysis_symbol1")
-        chart_type = st.selectbox("Chart Type", ["Line", "Area", "Baseline", "Candles"], key="ai_analysis_chart_type1")
-        timeframe = st.selectbox("Timeframe", ["1D", "1W", "1M", "3M", "1Y", "ALL"], key="ai_analysis_timeframe1")
-        period_map = {"1D": "1d", "1W": "5d", "1M": "1mo", "3M": "3mo", "1Y": "1y", "ALL": "max"}
-        period = period_map[timeframe]
+        # Search and Controls Section - 2 columns like tickertape/moneycontrol
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            symbol = st.text_input("Enter stock symbol", "RELIANCE", key="ai_analysis_symbol1",
+                                 help="Enter NSE stock symbol (e.g., RELIANCE, TCS, INFY)")
+        with col2:
+            timeframe = st.selectbox("Timeframe", ["1D", "1W", "1M", "3M", "1Y", "ALL"], 
+                                   key="ai_analysis_timeframe1")
+
+        # Timeframe mapping with proper intervals
+        period_map = {
+            "1D": ("1d", "5m"),    # Changed to 5m for more granular intraday data
+            "1W": ("5d", "15m"),
+            "1M": ("1mo", "30m"),
+            "3M": ("3mo", "1d"),
+            "1Y": ("1y", "1d"),
+            "ALL": ("max", "1d")
+        }
+        period, interval = period_map[timeframe]
+
         if symbol:
             try:
-                ticker = yf.Ticker(f"{symbol}.NS")
-                data = ticker.history(period=period)
-                info = ticker.info
-                if data.empty:
-                    st.warning("No data found for this symbol.")
-                else:
-                    st.subheader("Price Analysis")
+                data = get_stock_data(symbol, period=period, interval=interval)
+                if data is not None and not data.empty:
+                    # Stock Chart & Price Analysis Section
+                    st.markdown("""
+                    <div style='background-color: #1e2130; padding: 1rem; border-radius: 10px; margin: 1rem 0;'>
+                        <h3 style='color: #ffffff; margin: 0 0 1rem 0;'>Stock Chart & Price Analysis</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    # Price metrics with improved styling
                     current_price, open_price, high_price, low_price, price_change, price_change_pct = get_price_metrics(data)
-                    col1, col2, col3, col4, col5, col6 = st.columns(6)
-                    with col1:
-                        st.metric('Open', f'₹{open_price:.2f}')
-                    with col2:
-                        st.metric('High', f'₹{high_price:.2f}')
-                    with col3:
-                        st.metric('Low', f'₹{low_price:.2f}')
-                    with col4:
-                        st.metric('Current', f'₹{current_price:.2f}')
-                    with col5:
-                        st.metric('Change', f'₹{price_change:.2f}')
-                    with col6:
-                        st.metric('Change %', f'{price_change_pct:.2f}%')
-                    st.subheader("Stock Chart")
-                    display_current_data(data, chart_type)
-                    data_ind = calculate_technical_indicators(data)
-                    show_technical_indicators(data_ind, info)
-                    data_ind = generate_signals(data_ind)
-                    show_technical_signals(data_ind)
+                    cols = st.columns(6)
+                    metrics = [
+                        ('Open', f'₹{open_price:.2f}'),
+                        ('High', f'₹{high_price:.2f}'),
+                        ('Low', f'₹{low_price:.2f}'),
+                        ('Current', f'₹{current_price:.2f}'),
+                        ('Change', f'₹{price_change:.2f}'),
+                        ('Change %', f'{price_change_pct:+.2f}%')
+                    ]
+                    
+                    for col, (label, value) in zip(cols, metrics):
+                        with col:
+                            st.metric(label, value, 
+                                    delta=f"{price_change_pct:+.2f}%" if label == "Change %" else None,
+                                    delta_color="normal")
+
+                    # Display chart
+                    display_current_data(data, "Candles")
+
+                    # # Technical Analysis Section
+                    # st.markdown("""
+                    # <div style='background-color: #1e2130; padding: 1rem; border-radius: 10px; margin: 1rem 0;'>
+                    #     <h3 style='color: #ffffff; margin: 0 0 1rem 0;'>Technical Analysis</h3>
+                    # </div>
+                    # """, unsafe_allow_html=True)
+
+                    # # Display technical indicators in a grid
+                    # col1, col2, col3, col4 = st.columns(4)
+                    # indicators = [
+                    #     ('RSI', data['RSI'].iloc[-1] if 'RSI' in data.columns else None),
+                    #     ('MACD', data['MACD'].iloc[-1] if 'MACD' in data.columns else None),
+                    #     ('SMA 20', data['SMA_20'].iloc[-1] if 'SMA_20' in data.columns else None),
+                    #     ('EMA 20', data['EMA_20'].iloc[-1] if 'EMA_20' in data.columns else None)
+                    # ]
+                    
+                    # for col, (label, value) in zip([col1, col2, col3, col4], indicators):
+                    #     with col:
+                    #         if value is not None and not pd.isna(value):
+                    #             st.metric(label, f"{value:.2f}")
+                    #         else:
+                    #             st.metric(label, "N/A")
+
+                    # Trading Signal with color-coded display
+                    if 'Signal' in data.columns:
+                        current_signal = data['Signal'].iloc[-1]
+                        signal_text = "BUY" if current_signal == 1 else "SELL" if current_signal == -1 else "NEUTRAL"
+                        signal_color = "green" if current_signal == 1 else "red" if current_signal == -1 else "gray"
+                        
+                        st.markdown(f"""
+                        <div style='background-color: #1e2130; padding: 1rem; border-radius: 10px; margin: 1rem 0;'>
+                            <h3 style='color: #ffffff; margin: 0 0 0.5rem 0;'>Trading Signal</h3>
+                            <p style='color: {signal_color}; font-size: 1.5rem; font-weight: bold; margin: 0;'>{signal_text}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+
             except Exception as e:
                 st.error(f"Error fetching/displaying data: {e}")
 
@@ -376,7 +478,7 @@ def show_ai_analysis():
     with tab3:
         st.header("Sentiment Analysis & News")
         symbol3 = st.text_input("Enter stock symbol (e.g., RELIANCE, TCS):", "RELIANCE", key="ai_analysis_symbol3")
-        if symbol3:
+        if symbol3 and st.button("Analyze Sentiment", key="analyze_sentiment_btn"):
             show_sentiment_section(symbol3)
 
 if __name__ == "__main__":
