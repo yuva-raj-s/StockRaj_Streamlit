@@ -15,6 +15,17 @@ if current_dir not in sys.path:
 
 from chatbot import IndianStockChatbot as MLChatbot  # Import using absolute path
 
+# Add Portfolio and Watchlist directories to sys.path for import
+portfolio_dir = os.path.abspath(os.path.join(current_dir, '../Portfolio'))
+watchlist_dir = os.path.abspath(os.path.join(current_dir, '../Watchlist'))
+if portfolio_dir not in sys.path:
+    sys.path.append(portfolio_dir)
+if watchlist_dir not in sys.path:
+    sys.path.append(watchlist_dir)
+
+from portfolio import load_portfolio, calculate_portfolio_metrics
+from watchlist_operations import WatchlistManager
+
 class IndianStockChatbot:
     def __init__(self):
         """Initialize the chatbot with ML capabilities"""
@@ -208,6 +219,38 @@ class IndianStockChatbot:
         try:
             # First try to get a response from the ML chatbot
             try:
+                # --- INTEGRATION: Portfolio Analysis ---
+                if any(word in query.lower() for word in ['portfolio', 'my stocks', 'my investments']):
+                    # Use real portfolio data
+                    portfolio = load_portfolio()
+                    metrics = calculate_portfolio_metrics(portfolio)
+                    if metrics:
+                        response = "Portfolio Analysis:\n"
+                        for holding in metrics['holdings']:
+                            response += f"\n{holding['symbol']}:\n"
+                            response += f"Price: ₹{holding['current_price']:.2f}\n"
+                            response += f"Change: {holding['pnl_percent']:+.2f}%\n"
+                            response += f"P/E Ratio: N/A\n"  # You can add more details if needed
+                        response += f"\nTotal Value: ₹{metrics['total_value']:.2f}"
+                        response += f"\nTotal Change: {metrics['total_pnl_percent']:+.2f}%"
+                        return response
+                    return "Unable to fetch portfolio analysis at the moment."
+                # --- INTEGRATION: Watchlist Analysis ---
+                if any(word in query.lower() for word in ['watchlist', 'watch list']):
+                    # Use real watchlist data
+                    watchlist_manager = WatchlistManager()
+                    watchlist_data = watchlist_manager.get_watchlist_data()
+                    if not watchlist_data.empty:
+                        response = "Watchlist Analysis:\n"
+                        for idx, row in watchlist_data.iterrows():
+                            response += f"\n{row['Symbol']}:\n"
+                            response += f"Price: {row['Current Price']}\n"
+                            response += f"Change: {row['Change']}\n"
+                            response += f"Volume: N/A\n"  # You can add more details if needed
+                            response += f"P/E Ratio: {row['P/E Ratio']}\n"
+                        return response
+                    return "Unable to fetch watchlist analysis at the moment."
+                # --- END INTEGRATION ---
                 ml_response = self.ml_chatbot.process_query(query)
                 if ml_response and ml_response != "I'm having trouble understanding. Could you please rephrase your question?":
                     return ml_response
@@ -323,7 +366,7 @@ class IndianStockChatbot:
             return f"I encountered an error: {str(e)}"
 
 def show_chat():
-    """Display the AI chat page with futuristic UI"""
+    """Display the AI chat page"""
     # Initialize session state
     if 'initialized' not in st.session_state:
         st.session_state.initialized = False
@@ -342,420 +385,385 @@ def show_chat():
             "What are the trading signals for HDFC Bank?",
             "Show my portfolio analysis"
         ]
-    if 'processing' not in st.session_state:
-        st.session_state.processing = False
 
-    # Enhanced CSS with dashboard-like styling
+    # Custom CSS
     st.markdown("""
     <style>
-        /* Global styles */
-        .main {
-            background: #FFFFFF;
-            color: #1E293B;
+        body, .main, .block-container {
+            background-color: #101820 !important;
         }
-        
-        /* Chat container */
+        .stApp {
+            background-color: #101820 !important;
+        }
+        .stTextInput>div>div>input {
+            font-size: 1.1rem;
+            background-color: #1B2C3A !important;
+            color: #fff !important;
+            border: 1.5px solid #223344 !important;
+        }
+        .chat-outer {
+            max-height: 480px;
+            min-height: 320px;
+            overflow-y: auto;
+            padding-bottom: 1rem;
+            margin-bottom: 1.2rem;
+            border-radius: 1.2rem;
+            background: rgba(27,44,58,0.13);
+            box-shadow: 0 2px 12px rgba(27,44,58,0.10);
+        }
         .chat-container {
-            background: #FFFFFF;
-            border-radius: 0.5rem;
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
-            border: 1px solid #E2E8F0;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        }
-        
-        /* Message bubbles */
-        .chat-message {
-            padding: 1rem 1.5rem;
-            border-radius: 0.5rem;
-            margin-bottom: 1rem;
             display: flex;
             flex-direction: column;
-            max-width: 85%;
-            animation: messageSlide 0.3s ease-out;
+            gap: 2rem;
+            margin-bottom: 0.5rem;
         }
-        
+        .chat-message {
+            display: flex;
+            align-items: flex-end;
+            gap: 1.2rem;
+            max-width: 80%;
+            border-radius: 1.7rem;
+            box-shadow: 0 4px 24px rgba(27,44,58,0.13);
+            padding: 1.5rem 1.7rem;
+            margin-bottom: 0.7rem;
+            font-size: 1.13rem;
+            word-break: break-word;
+            font-family: 'Segoe UI', 'Arial', sans-serif;
+            opacity: 1;
+            transition: box-shadow 0.2s, opacity 0.4s;
+        }
+        .chat-message.bot.new {
+            animation: fadeInBot 0.7s;
+        }
+        @keyframes fadeInBot {
+            0% { opacity: 0; transform: translateY(20px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
         .chat-message.user {
-            background: #F1F5F9;
+            background: linear-gradient(135deg, #1B2C3A 85%, #223344 100%);
+            color: #fff;
             margin-left: auto;
-            border-bottom-right-radius: 0.25rem;
-            color: #1E293B;
+            border-bottom-right-radius: 0.7rem;
+            border-top-right-radius: 0.7rem;
+            border-bottom-left-radius: 1.7rem;
+            border-top-left-radius: 1.7rem;
+            border: 2px solid #223344;
         }
-        
         .chat-message.bot {
-            background: #FFFFFF;
+            background: linear-gradient(135deg, #223344 85%, #1B2C3A 100%);
+            color: #e6eaf0;
             margin-right: auto;
-            border-bottom-left-radius: 0.25rem;
-            border: 1px solid #E2E8F0;
-            color: #1E293B;
+            border-bottom-left-radius: 0.7rem;
+            border-top-left-radius: 0.7rem;
+            border-bottom-right-radius: 1.7rem;
+            border-top-right-radius: 1.7rem;
+            border: 2px solid #1B2C3A;
         }
-        
+        .chat-avatar {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.7rem;
+            font-weight: bold;
+            box-shadow: 0 2px 8px rgba(27,44,58,0.13);
+        }
+        .chat-avatar.user {
+            background: #1B2C3A;
+            color: #fff;
+            border: 2.5px solid #223344;
+        }
+        .chat-avatar.bot {
+            background: #223344;
+            color: #fff;
+            border: 2.5px solid #1B2C3A;
+        }
         .chat-message .content {
-            font-size: 1rem;
-            line-height: 1.5;
-            white-space: pre-wrap;
+            margin-top: 0;
+            flex: 1;
         }
-        
-        .chat-message .timestamp {
-            font-size: 0.75rem;
-            color: #64748B;
-            margin-top: 0.5rem;
-            text-align: right;
+        .sticky-input {
+            position: sticky;
+            bottom: 0;
+            background: #101820;
+            z-index: 10;
+            padding-top: 1rem;
+            padding-bottom: 0.5rem;
         }
-        
-        /* Input area */
-        .stTextInput>div>div>input {
-            background: #FFFFFF;
-            border: 1px solid #E2E8F0;
-            border-radius: 0.5rem;
-            padding: 0.75rem 1rem;
-            color: #1E293B;
-            font-size: 1rem;
-        }
-        
-        .stTextInput>div>div>input:focus {
-            border-color: #3B82F6;
-            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
-            outline: none;
-        }
-        
-        /* Button styling */
-        .stButton>button {
-            background: #3B82F6;
-            color: white;
+        .input-separator {
             border: none;
-            border-radius: 0.5rem;
-            padding: 0.5rem 1rem;
-            font-size: 1rem;
-            font-weight: 500;
-            transition: all 0.2s ease;
+            border-top: 2px solid #223344;
+            margin: 0.5rem 0 1.2rem 0;
         }
-        
-        .stButton>button:hover {
-            background: #2563EB;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        .loading-bot {
+            display: flex;
+            align-items: center;
+            gap: 0.7rem;
+            margin-left: 2.5rem;
+            margin-bottom: 1.2rem;
         }
-        
-        /* Market cards */
-        .market-card {
-            background: #FFFFFF;
-            border-radius: 0.5rem;
-            padding: 1.25rem;
-            margin-bottom: 1rem;
-            border: 1px solid #E2E8F0;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        .loading-dots span {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            margin-right: 2px;
+            background: #e6eaf0;
+            border-radius: 50%;
+            opacity: 0.7;
+            animation: loadingFade 1.2s infinite;
         }
-        
-        .market-card:hover {
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        .loading-dots span:nth-child(2) {
+            animation-delay: 0.2s;
         }
-        
-        .market-card .title {
-            color: #64748B;
-            font-size: 1rem;
+        .loading-dots span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+        @keyframes loadingFade {
+            0%, 80%, 100% { opacity: 0.3; }
+            40% { opacity: 1; }
+        }
+        .stButton>button {
+            width: 100%;
+            border-radius: 0.7rem;
+            height: 3.2rem;
+            font-size: 1.13rem;
+            background-color: #1B2C3A !important;
+            color: #fff !important;
+            border: 1.5px solid #223344 !important;
             font-weight: 600;
-            margin-bottom: 0.75rem;
-            text-transform: uppercase;
+            transition: background 0.2s, color 0.2s;
+        }
+        .stButton>button:hover {
+            background-color: #223344 !important;
+            color: #fff !important;
+        }
+        .suggestion-chip {
+            display: inline-block;
+            padding: 0.6rem 1.2rem;
+            margin: 0.3rem;
+            border-radius: 1.2rem;
+            background-color: #1B2C3A;
+            color: #fff;
+            cursor: pointer;
+            border: 1.5px solid #223344;
+            font-size: 1.05rem;
+            font-weight: 500;
+            box-shadow: 0 2px 8px rgba(27,44,58,0.10);
+        }
+        .suggestion-chip:hover {
+            background-color: #223344;
+            color: #fff;
+        }
+        .stMetric {
+            background-color: #1B2C3A !important;
+            color: #fff !important;
+            border-radius: 0.7rem;
+            padding: 0.7rem 1.2rem;
+            box-shadow: 0 2px 8px rgba(27,44,58,0.10);
+        }
+        .stExpander, .stExpanderHeader {
+            background-color: #1B2C3A !important;
+            color: #fff !important;
+            border-radius: 0.7rem !important;
+        }
+        .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4, .stMarkdown h5, .stMarkdown h6 {
+            color: #fff !important;
+            font-weight: 700;
             letter-spacing: 0.5px;
         }
-        
-        .market-card .value {
-            color: #1E293B;
-            font-size: 1.5rem;
-            font-weight: bold;
-            margin-bottom: 0.25rem;
+        .section-card {
+            background: linear-gradient(135deg, #1B2C3A 90%, #223344 100%);
+            border-radius: 1.2rem;
+            box-shadow: 0 4px 24px rgba(27,44,58,0.13);
+            padding: 1.5rem 1.7rem;
+            margin-bottom: 1.5rem;
+            color: #fff;
         }
-        
-        .market-card .change {
-            font-size: 1rem;
-            font-weight: 500;
-        }
-        
-        /* Typing indicator */
-        .typing-indicator {
-            display: flex;
-            padding: 1rem;
-            background: #F8FAFC;
-            border-radius: 0.5rem;
+        .section-title {
+            font-size: 1.35rem;
+            font-weight: 700;
+            color: #fff;
             margin-bottom: 1rem;
-            width: fit-content;
-            border: 1px solid #E2E8F0;
+            letter-spacing: 0.5px;
         }
-        
-        .typing-indicator span {
-            height: 6px;
-            width: 6px;
-            background: #3B82F6;
-            border-radius: 50%;
-            display: inline-block;
-            margin: 0 2px;
-            animation: typingPulse 1.4s infinite;
+        .section-divider {
+            border: none;
+            border-top: 2px solid #223344;
+            margin: 1.2rem 0 1.5rem 0;
         }
-        
-        /* Help section */
-        .help-section {
-            background: #FFFFFF;
-            border-radius: 0.5rem;
-            padding: 1.5rem;
-            border: 1px solid #E2E8F0;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        }
-        
-        .help-section h3 {
-            color: #1E293B;
-            font-size: 1.1rem;
-            margin-bottom: 1rem;
-            font-weight: 600;
-        }
-        
-        .help-section ul {
-            color: #475569;
-            padding-left: 0;
-            list-style-type: none;
-        }
-        
-        .help-section li {
-            margin-bottom: 0.75rem;
-            padding-left: 1.25rem;
-            position: relative;
-        }
-        
-        .help-section li::before {
-            content: '•';
-            position: absolute;
-            left: 0;
-            color: #3B82F6;
-        }
-        
-        /* Footer */
-        .footer {
-            text-align: center;
-            margin-top: 2rem;
-            padding: 1rem;
-            border-top: 1px solid #E2E8F0;
-            color: #64748B;
-            font-size: 0.875rem;
-        }
-        
-        /* Custom scrollbar */
-        ::-webkit-scrollbar {
-            width: 6px;
-        }
-        
-        ::-webkit-scrollbar-track {
-            background: #F1F5F9;
-        }
-        
-        ::-webkit-scrollbar-thumb {
-            background: #CBD5E1;
-            border-radius: 3px;
-        }
-        
-        ::-webkit-scrollbar-thumb:hover {
-            background: #94A3B8;
-        }
-        
-        /* Section headers */
-        h1, h2, h3 {
-            color: #1E293B;
-            font-weight: 600;
-        }
-        
-        /* Links and interactive elements */
-        a {
-            color: #3B82F6;
-            text-decoration: none;
-        }
-        
-        a:hover {
-            color: #2563EB;
-        }
-        
-        /* Status colors */
-        .positive {
-            color: #059669;
-        }
-        
-        .negative {
-            color: #DC2626;
-        }
-        
-        .neutral {
-            color: #64748B;
+        .stInfo, .stAlert, .stError {
+            background-color: #223344 !important;
+            color: #fff !important;
+            border-radius: 0.7rem !important;
         }
     </style>
     """, unsafe_allow_html=True)
 
+    # Initialize chatbot with loading state
+    if not st.session_state.initialized:
+        with st.spinner("Initializing chatbot and loading models... This may take a few minutes."):
+            try:
+                st.session_state.chatbot = IndianStockChatbot()
+                st.session_state.initialized = True
+                st.success("Chatbot initialized successfully!")
+            except Exception as e:
+                st.error(f"Error initializing chatbot: {str(e)}")
+                st.info("The chatbot will continue with limited functionality.")
+
     # Main layout
-    st.markdown("""
-    <div style='text-align: center; margin-bottom: 2rem;'>
-        <h1 style='color: #1E293B; font-size: 2rem; margin-bottom: 0.5rem;'>AI Stock Market Assistant</h1>
-        <p style='color: #64748B; font-size: 1rem;'>
-            Your intelligent companion for real-time market analysis and insights
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+    col1, col2 = st.columns([2, 1])
 
-    # Create main columns with adjusted ratio
-    main_col1, main_col2 = st.columns([2, 1])
+    with col1:
+        st.markdown('<div class="section-card">', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">💬 AI Chat Assistant</div>', unsafe_allow_html=True)
+        st.write("Ask about Indian stocks, indices, market activity, portfolio, sentiment, or watchlist.")
 
-    with main_col1:
-        # Chat container
+        # Chat area with fixed height and scroll
+        st.markdown('<div class="chat-outer">', unsafe_allow_html=True)
         st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-        
-        # Chat history display
-        for user_msg, bot_msg in st.session_state.history:
-            st.markdown(f"""
-            <div class="chat-message user">
-                <div class="content">{user_msg}</div>
-                <div class="timestamp">{datetime.now().strftime("%H:%M")}</div>
+        for idx, (user_msg, bot_msg) in enumerate(st.session_state.history):
+            st.markdown(f'''
+            <div style="display: flex; flex-direction: row-reverse; align-items: flex-end;">
+                <div class="chat-avatar user">🧑</div>
+                <div class="chat-message user">
+                    <div class="content">{user_msg}</div>
+                </div>
             </div>
-            """, unsafe_allow_html=True)
-            
-            st.markdown(f"""
-            <div class="chat-message bot">
-                <div class="content">{bot_msg}</div>
-                <div class="timestamp">{datetime.now().strftime("%H:%M")}</div>
+            <div style="display: flex; align-items: flex-end;">
+                <div class="chat-avatar bot">🤖</div>
+                <div class="chat-message bot{' new' if idx == len(st.session_state.history)-1 else ''}">
+                    <div class="content">{bot_msg}</div>
+                </div>
             </div>
-            """, unsafe_allow_html=True)
-        
-        if st.session_state.processing:
-            st.markdown("""
-            <div class="typing-indicator">
-                <span></span>
-                <span></span>
-                <span></span>
+            ''', unsafe_allow_html=True)
+        # Loading animation if bot is processing
+        if st.session_state.get('bot_loading', False):
+            st.markdown('''
+            <div class="loading-bot">
+                <div class="chat-avatar bot">🤖</div>
+                <div class="loading-dots">
+                    <span></span><span></span><span></span>
+                </div>
             </div>
-            """, unsafe_allow_html=True)
-        
+            ''', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # User input and buttons
-        user_input = st.text_input("Ask your question:", key="user_input", 
-                                 placeholder="Type your query about stocks, market activity, or analysis...")
-
-        input_col1, input_col2 = st.columns([4, 1])
-        with input_col1:
-            if st.button("Send", key="send_button") or (user_input and st.session_state.get('last_input') != user_input):
-                if user_input.strip():
-                    st.session_state.processing = True
-                    st.experimental_rerun()
-        with input_col2:
-            if st.button("Clear", key="clear_button"):
-                st.session_state.history = []
-                st.session_state.last_input = ""
-                st.experimental_rerun()
-
-        # Quick suggestions
-        st.markdown("### Quick Suggestions")
-        suggestion_cols = st.columns(4)
+        # Quick suggestions (restored)
+        st.markdown('<div style="margin-bottom: 1.2rem;">', unsafe_allow_html=True)
+        st.markdown('<div class="section-title" style="font-size:1.08rem; margin-bottom:0.5rem;">💡 Quick Suggestions</div>', unsafe_allow_html=True)
+        cols = st.columns(4)
         for i, suggestion in enumerate(st.session_state.suggestions):
-            if suggestion_cols[i % 4].button(suggestion, key=f"suggestion_{i}"):
+            if cols[i % 4].button(suggestion, key=f"suggestion_{i}", help="Click to use this suggestion"):
                 st.session_state.user_input = suggestion
-                st.session_state.processing = True
                 st.experimental_rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    with main_col2:
-        # Market Overview
-        st.markdown("### Market Overview")
+        # Visually separate input area
+        st.markdown('<hr class="input-separator" />', unsafe_allow_html=True)
+        st.markdown('<div class="sticky-input">', unsafe_allow_html=True)
+        # User input
+        user_input = st.text_input("Type your question:", key="user_input")
+        # Send button
+        send_clicked = st.button("Send", key="send_button") or (user_input and st.session_state.get('last_input') != user_input)
+        if send_clicked:
+            if user_input.strip():
+                st.session_state['bot_loading'] = True
+                with st.spinner("Processing your query..."):
+                    try:
+                        bot_response = st.session_state.chatbot.process_query(user_input)
+                        st.session_state.history.append((user_input, bot_response))
+                        st.session_state.last_input = user_input
+                        st.session_state['bot_loading'] = False
+                        st.experimental_rerun()
+                    except Exception as e:
+                        st.error(f"Error processing query: {str(e)}")
+                        st.session_state.history.append((user_input, "I'm having trouble processing your request. Please try again."))
+                        st.session_state['bot_loading'] = False
+        st.markdown('</div>', unsafe_allow_html=True)
+        # Clear chat button
+        if st.button("Clear Chat", key="clear_button"):
+            st.session_state.history = []
+            st.session_state.last_input = ""
+            st.experimental_rerun()
+
+    with col2:
+        st.markdown('<div class="section-card">', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">📊 Market Overview</div>', unsafe_allow_html=True)
         try:
             market_data = st.session_state.chatbot.get_market_activity()
             if market_data:
-                st.markdown('<div style="display: flex; flex-direction: column; gap: 0.75rem;">', unsafe_allow_html=True)
+                # Nifty 50
+                st.metric(
+                    "Nifty 50",
+                    f"₹{market_data['nifty']['current']:,.2f}",
+                    f"{market_data['nifty']['change_pct']:+.2f}%"
+                )
                 
-                # Market cards with updated styling
-                for index, data in [
-                    ("Nifty 50", market_data['nifty']),
-                    ("Sensex", market_data['sensex']),
-                    ("Market Status", {"value": market_data['market_status'], "change": market_data['last_updated']}),
-                    ("Advance-Decline", market_data['advance_decline'])
-                ]:
-                    if index == "Market Status":
-                        status_color = "#059669" if data['value'] == "Open" else "#DC2626"
-                        st.markdown(f"""
-                        <div class="market-card">
-                            <div class="title">{index}</div>
-                            <div class="value" style="color: {status_color}">{data['value']}</div>
-                            <div class="change">Last Updated: {data['change']}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    elif index == "Advance-Decline":
-                        st.markdown(f"""
-                        <div class="market-card">
-                            <div class="title">{index} Ratio</div>
-                            <div class="value">{data['ratio']:.2f}</div>
-                            <div class="change">
-                                Advances: {data['advances']} | Declines: {data['declines']}
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    else:
-                        change_color = "#059669" if data['change_pct'] >= 0 else "#DC2626"
-                        st.markdown(f"""
-                        <div class="market-card">
-                            <div class="title">{index}</div>
-                            <div class="value">₹{data['current']:,.2f}</div>
-                            <div class="change" style="color: {change_color}">
-                                {data['change_pct']:+.2f}%
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
+                # Sensex
+                st.metric(
+                    "Sensex",
+                    f"₹{market_data['sensex']['current']:,.2f}",
+                    f"{market_data['sensex']['change_pct']:+.2f}%"
+                )
                 
-                st.markdown('</div>', unsafe_allow_html=True)
+                # Market Status
+                status_color = "#00e676" if market_data['market_status'] == "Open" else "#ff5252"
+                st.markdown(f"Market Status: <span style='color:{status_color}; font-weight:600;'>{market_data['market_status']}</span>", unsafe_allow_html=True)
+                
+                # Advance-Decline Ratio
+                if market_data['advance_decline']['ratio'] != float('inf'):
+                    st.metric(
+                        "Advance-Decline Ratio",
+                        f"{market_data['advance_decline']['ratio']:.2f}",
+                        f"Advances: {market_data['advance_decline']['advances']} | Declines: {market_data['advance_decline']['declines']}"
+                    )
         except Exception as e:
             st.error("Unable to fetch market data")
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    # Bottom section with divider
-    st.markdown("<hr style='margin: 2rem 0; border: none; border-top: 1px solid #E2E8F0;'>", unsafe_allow_html=True)
-    
-    # Recent Searches and Help & Tips in a single row
-    bottom_col1, bottom_col2 = st.columns([1, 2])
-
-    with bottom_col1:
-        st.markdown("### Recent Searches")
+        st.markdown('<div class="section-card">', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">🔍 Recent Searches</div>', unsafe_allow_html=True)
         if st.session_state.history:
             recent_searches = [msg[0] for msg in st.session_state.history[-5:]]
-            for idx, search in enumerate(recent_searches):
-                if st.button(search, key=f"recent_search_{idx}", use_container_width=True):
+            for search in recent_searches:
+                if st.button(search, key=f"recent_{search}"):
                     st.session_state.user_input = search
-                    st.session_state.processing = True
                     st.experimental_rerun()
         else:
             st.info("No recent searches")
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    with bottom_col2:
-        st.markdown("### Help & Tips")
-        st.markdown("""
-        <div class="help-section">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
-                <div>
-                    <h3>Example Queries</h3>
-                    <ul>
-                        <li>Stock Price: "What's the price of TCS?"</li>
-                        <li>Market Activity: "Show market activity"</li>
-                        <li>Sentiment: "What's the sentiment for Reliance?"</li>
-                        <li>Watchlist: "Show my watchlist"</li>
-                    </ul>
-                </div>
-                <div>
-                    <h3>Tips</h3>
-                    <ul>
-                        <li>Be specific with company names</li>
-                        <li>Use stock symbols for faster results</li>
-                        <li>Ask about market terms for explanations</li>
-                        <li>Use the quick suggestions for common queries</li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown('<div class="section-card">', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">💡 Help & Tips</div>', unsafe_allow_html=True)
+        with st.expander("Show Help & Tips"):
+            st.markdown("""
+            **Example Queries:**
+            - Stock Price: "What's the price of TCS?"
+            - Market Activity: "Show market activity"
+            - Sentiment: "What's the sentiment for Reliance?"
+            - Watchlist: "Show my watchlist"
+            - Market Terms: "Explain what is IPO?"
+            - Sector Analysis: "Show sector performance"
+            - Trading Signals: "What are the trading signals for HDFC Bank?"
+            - Portfolio: "Show my portfolio analysis"
+            
+            **Tips:**
+            - Be specific with company names
+            - Use stock symbols for faster results
+            - Ask about market terms for explanations
+            - Use the quick suggestions for common queries
+            """)
+        st.markdown('</div>', unsafe_allow_html=True)
 
     # Footer
+    st.markdown("---")
     st.markdown("""
-    <div class="footer">
-        <p>
-            Powered by Advanced AI • Real-time Market Data • Last Updated: {}
-        </p>
+    <div style='text-align: center'>
+        <p>Powered by AI • Real-time Market Data • Last Updated: {}</p>
     </div>
     """.format(datetime.now().strftime("%Y-%m-%d %H:%M:%S")), unsafe_allow_html=True)
 
