@@ -79,6 +79,12 @@ def _display_watchlist(watchlist_manager):
                 if st.button(f"Remove {symbol}", key=f"remove_{symbol}"):
                     watchlist_manager.remove_from_watchlist(f"{symbol}.NS")
                     st.experimental_rerun()
+            # Add clear all button
+            if st.button("Clear Entire Watchlist", key="clear_watchlist"):
+                watchlist_manager.watchlist = []
+                watchlist_manager._save_watchlist()
+                st.success("Watchlist cleared!")
+                st.experimental_rerun()
         else:
             st.info("Your watchlist is empty. Add some stocks to get started!")
     

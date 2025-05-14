@@ -557,6 +557,16 @@ def _display_portfolio_overview(portfolio):
     """Display portfolio overview section"""
     st.header("Portfolio Overview")
     
+    # Add clear all button
+    if st.button("Clear Entire Portfolio", key="clear_portfolio"):
+        portfolio["transactions"] = []
+        portfolio["holdings"] = {}
+        portfolio["goals"] = []
+        portfolio["notes"] = {}
+        save_portfolio(portfolio)
+        st.success("Portfolio cleared!")
+        st.experimental_rerun()
+    
     # Calculate portfolio metrics
     metrics = calculate_portfolio_metrics(portfolio)
     
