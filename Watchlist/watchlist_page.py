@@ -3,8 +3,8 @@ import yfinance as yf
 import pandas as pd
 from datetime import datetime
 import time
-from watchlist_operations import WatchlistManager
-from price_alerts import PriceAlertManager
+from .watchlist_operations import WatchlistManager
+from .price_alerts import PriceAlertManager
 
 def show_watchlist():
     """Display the watchlist page"""
