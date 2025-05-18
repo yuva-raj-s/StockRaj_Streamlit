@@ -39,11 +39,7 @@ class IndianStockChatbot:
             # Initialize models
             self.models = {
                 'intent': pipeline("text-classification", model="distilbert-base-uncased-finetuned-sst-2-english"),
-<<<<<<< HEAD
                 'sentiment': pipeline("sentiment-analysis", model="mrm8488/distilroberta-finetuned-financial-news-sentiment-analysis"),
-=======
-                'sentiment': pipeline("sentiment-analysis", model="distilbert-base-uncased-finetuned-sst-2-english"),
->>>>>>> b6047da6a02cac92003587009a2e085480af2c48
                 'text_qa': pipeline("question-answering", model="distilbert-base-cased-distilled-squad")
             }
             
@@ -660,260 +656,6 @@ class IndianStockChatbot:
                 ticker = yf.Ticker("^NSEI")
             elif index_symbol.upper() == "SENSEX":
                 ticker = yf.Ticker("^BSESN")
-<<<<<<< HEAD
-            else:
-                return None
-            
-            # Get historical data
-            hist = ticker.history(period="1d")
-            
-            # Calculate changes
-            current = hist['Close'].iloc[-1]
-            open_price = hist['Open'].iloc[0]
-            high = hist['High'].iloc[-1]
-            low = hist['Low'].iloc[-1]
-            volume = hist['Volume'].iloc[-1]
-            
-            change = current - open_price
-            change_pct = (change / open_price) * 100
-            
-            return {
-                "symbol": index_symbol.upper(),
-                "current": current,
-                "change": change,
-                "change_pct": change_pct,
-                "open": open_price,
-                "high": high,
-                "low": low,
-                "volume": volume,
-                "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
-        except Exception as e:
-            logging.error(f"Error fetching index data: {str(e)}")
-            return None
-
-    def get_portfolio_analysis(self, symbols: list) -> dict:
-        """Analyze a portfolio of stocks"""
-        try:
-            portfolio = {}
-            total_value = 0
-            total_change = 0
-            
-            for symbol in symbols:
-                if not symbol.endswith('.NS'):
-                    symbol = f"{symbol}.NS"
-                ticker = yf.Ticker(symbol)
-                info = ticker.info
-                
-                current_price = info.get("currentPrice", 0)
-                prev_close = info.get("previousClose", 0)
-                change = current_price - prev_close
-                change_pct = (change / prev_close) * 100
-                
-                portfolio[symbol.replace('.NS', '')] = {
-                    "price": current_price,
-                    "change": change,
-                    "change_pct": change_pct,
-                    "pe_ratio": info.get("trailingPE", 0),
-                    "market_cap": info.get("marketCap", 0)
-                }
-                
-                total_value += current_price
-                total_change += change
-            
-            return {
-                "stocks": portfolio,
-                "total_value": total_value,
-                "total_change": total_change,
-                "total_change_pct": (total_change / total_value) * 100 if total_value > 0 else 0
-            }
-        except Exception as e:
-            logging.error(f"Error analyzing portfolio: {str(e)}")
-            return None
-
-    def get_sentiment_analysis(self, symbol):
-        """Get sentiment analysis for a stock"""
-        try:
-            # Ensure proper symbol format
-            if not symbol.endswith('.NS'):
-                symbol = f"{symbol}.NS"
-            
-            print(f"Fetching sentiment analysis for {symbol}")
-            
-            # Get stock data
-            ticker = yf.Ticker(symbol)
-            info = ticker.info
-            
-            if not info:
-                print(f"No info data available for {symbol}")
-                return None
-                
-            current_price = info.get('regularMarketPrice') or info.get('currentPrice')
-            if not current_price:
-                print(f"No price data available for {symbol}")
-                return None
-            
-            # Get news articles
-            news = ticker.news
-            if not news:
-                print(f"No news available for {symbol}")
-                return None
-            
-            # Initialize sentiment counters
-            positive = 0
-            negative = 0
-            neutral = 0
-            total_news = len(news)
-            
-            # Analyze each news article
-            sentiments = []
-            recent_news = []
-            
-            for article in news[:10]:  # Analyze up to 10 most recent articles
-                if 'title' in article:
-                    # Get article sentiment
-                    blob = TextBlob(article['title'])
-                    sentiment_score = blob.sentiment.polarity
-                    sentiments.append(sentiment_score)
-                    
-                    # Categorize sentiment
-                    if sentiment_score > 0.1:
-                        positive += 1
-                    elif sentiment_score < -0.1:
-                        negative += 1
-                    else:
-                        neutral += 1
-                    
-                    # Store recent news
-                    recent_news.append({
-                        'title': article.get('title', ''),
-                        'link': article.get('link', ''),
-                        'publisher': article.get('publisher', ''),
-                        'published': article.get('published', ''),
-                        'sentiment': sentiment_score
-                    })
-            
-            if not sentiments:
-                print(f"No sentiment data available for {symbol}")
-                return None
-            
-            # Calculate overall sentiment
-            avg_sentiment = sum(sentiments) / len(sentiments)
-            
-            # Get technical indicators
-            hist = ticker.history(period="1mo")
-            if not hist.empty:
-                # Calculate RSI
-                delta = hist['Close'].diff()
-                gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-                loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-                rs = gain / loss
-                rsi = 100 - (100 / (1 + rs))
-                current_rsi = rsi.iloc[-1]
-                
-                # Calculate MACD
-                exp1 = hist['Close'].ewm(span=12, adjust=False).mean()
-                exp2 = hist['Close'].ewm(span=26, adjust=False).mean()
-                macd = exp1 - exp2
-                signal = macd.ewm(span=9, adjust=False).mean()
-                current_macd = macd.iloc[-1]
-                current_signal = signal.iloc[-1]
-            else:
-                current_rsi = None
-                current_macd = None
-                current_signal = None
-            
-            # Determine market context
-            price_change = info.get('regularMarketChangePercent', 0)
-            if price_change > 2:
-                market_context = "Strongly Bullish"
-            elif price_change > 0:
-                market_context = "Bullish"
-            elif price_change < -2:
-                market_context = "Strongly Bearish"
-            elif price_change < 0:
-                market_context = "Bearish"
-            else:
-                market_context = "Neutral"
-            
-            # Prepare response data
-            response_data = {
-                'symbol': symbol.replace('.NS', ''),
-                'current_price': current_price,
-                'price_change': price_change,
-                'sentiment_score': avg_sentiment,
-                'market_context': market_context,
-                'positive': positive,
-                'negative': negative,
-                'neutral': neutral,
-                'total_news': total_news,
-                'technical_indicators': {
-                    'rsi': current_rsi,
-                    'macd': current_macd,
-                    'macd_signal': current_signal
-                },
-                'recent_news': recent_news[:5]  # Include top 5 news articles
-            }
-            
-            print(f"Successfully generated sentiment analysis for {symbol}")
-            return response_data
-            
-        except Exception as e:
-            print(f"Error in sentiment analysis for {symbol}: {str(e)}")
-            return None
-
-    def _calculate_time_weight(self, article_date_str: str) -> float:
-        """Calculate time weight for news articles"""
-        try:
-            date_formats = [
-                '%a, %d %b %Y %H:%M:%S %z',
-                '%Y-%m-%d %H:%M:%S',
-                '%a, %d %b %Y %H:%M:%S',
-                '%Y-%m-%dT%H:%M:%S%z',
-                '%a %b %d, %Y',
-                '%d %b %Y'
-            ]
-            
-            parsed_date = None
-            for format_str in date_formats:
-                try:
-                    parsed_date = datetime.strptime(article_date_str, format_str)
-                    break
-                except ValueError:
-                    continue
-            
-            if parsed_date is None:
-                return 0.01
-            
-            now = datetime.now()
-            if parsed_date.tzinfo is not None:
-                now = now.replace(tzinfo=parsed_date.tzinfo)
-            
-            hours_diff = (now - parsed_date).total_seconds() / 3600
-            
-            if hours_diff < 1:
-                return 0.24
-            elif hours_diff < 24:
-                return max(0.01, 0.24 - ((hours_diff - 1) * 0.01))
-            else:
-                return 0.01
-        except Exception as e:
-            logging.error(f"Error calculating time weight: {e}")
-            return 0.01
-
-    def _calculate_sentiment_score(self, sentiment_label: str, time_weight: float) -> tuple:
-        """Calculate sentiment score with time weight"""
-        base_score = {
-            'positive': 3,
-            'neutral': 0,
-            'negative': -3
-        }.get(sentiment_label, 0)
-        
-        weighted_addition = base_score * time_weight
-        
-        return base_score, weighted_addition
-
-=======
             else:
                 return None
             
@@ -1096,7 +838,6 @@ class IndianStockChatbot:
             logging.error(f"Error in sentiment analysis: {str(e)}")
             return None
 
->>>>>>> b6047da6a02cac92003587009a2e085480af2c48
     def get_watchlist_analysis(self, symbols: list) -> dict:
         """Analyze stocks in watchlist"""
         try:
@@ -1114,10 +855,6 @@ class IndianStockChatbot:
                 change = current_price - prev_close
                 change_pct = (change / prev_close) * 100
                 
-                # Check for significant changes
-                if abs(change_pct) > 5:
-                    alerts.append(f"{symbol.replace('.NS', '')}: {change_pct:.2f}% change")
-                
                 watchlist[symbol.replace('.NS', '')] = {
                     "price": current_price,
                     "change": change,
@@ -1125,357 +862,22 @@ class IndianStockChatbot:
                     "volume": info.get("volume", 0),
                     "pe_ratio": info.get("trailingPE", 0)
                 }
+                
+                # Generate alerts
+                if abs(change_pct) > 5:  # Alert for >5% price change
+                    alerts.append(f"{symbol.replace('.NS', '')} has moved {change_pct:+.2f}%")
+                
+                if info.get("volume", 0) > info.get("averageVolume", 0) * 2:  # Alert for high volume
+                    alerts.append(f"{symbol.replace('.NS', '')} has unusually high volume")
             
             return {
                 "stocks": watchlist,
-                "alerts": alerts
+                "alerts": alerts,
+                "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
         except Exception as e:
             logging.error(f"Error analyzing watchlist: {str(e)}")
             return None
-
-    def is_market_open(self) -> bool:
-        """Check if Indian market is currently open with real-time data"""
-        try:
-            now = datetime.now()
-            
-            # Check if it's a weekend
-            if now.weekday() >= 5:  # Saturday (5) or Sunday (6)
-                return False
-            
-            # Check if it's a holiday (you can add more holidays)
-            holidays = [
-                "2024-01-26",  # Republic Day
-                "2024-03-08",  # Mahashivratri
-                "2024-03-25",  # Holi
-                "2024-04-09",  # Ram Navami
-                "2024-04-11",  # Mahavir Jayanti
-                "2024-04-17",  # Good Friday
-                "2024-05-01",  # Maharashtra Day
-                "2024-05-20",  # Lok Sabha Elections
-                "2024-06-17",  # Bakri Id
-                "2024-07-17",  # Muharram
-                "2024-08-15",  # Independence Day
-                "2024-10-02",  # Gandhi Jayanti
-                "2024-11-01",  # Diwali-Laxmi Pujan
-                "2024-11-15",  # Gurunanak Jayanti
-                "2024-12-25"   # Christmas
-            ]
-            
-            if now.strftime("%Y-%m-%d") in holidays:
-                return False
-            
-            # Define market hours
-            market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
-            market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
-            
-            # Check if current time is within market hours
-            is_open = market_open <= now <= market_close
-            
-            # Additional check using NSE data to confirm market status
-            try:
-                nifty = yf.Ticker("^NSEI")
-                nifty_data = nifty.history(period="1d", interval="1m")
-                if not nifty_data.empty:
-                    last_update = nifty_data.index[-1]
-                    time_diff = (now - last_update).total_seconds() / 60
-                    # If last update is more than 5 minutes old, market might be closed
-                    if time_diff > 5:
-                        is_open = False
-            except:
-                pass  # If we can't get NSE data, rely on time-based check
-            
-            return is_open
-            
-        except Exception as e:
-            logging.error(f"Error checking market status: {str(e)}")
-            # Fallback to time-based check if there's an error
-            try:
-                now = datetime.now()
-                if now.weekday() >= 5:  # Weekend
-                    return False
-                market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
-                market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
-                return market_open <= now <= market_close
-            except:
-                return False
-<<<<<<< HEAD
-
-    def get_advance_decline_ratio(self) -> dict:
-        """Get advance-decline ratio for the market"""
-        try:
-            nifty = yf.Ticker("^NSEI")
-            components = nifty.info.get("components", [])
-            
-            advances = 0
-            declines = 0
-            
-            for symbol in components[:50]:  # Check top 50 stocks
-                if not symbol.endswith('.NS'):
-                    symbol = f"{symbol}.NS"
-                ticker = yf.Ticker(symbol)
-                info = ticker.info
-                
-                if info.get("currentPrice", 0) > info.get("previousClose", 0):
-                    advances += 1
-                else:
-                    declines += 1
-            
-            return {
-                "advances": advances,
-                "declines": declines,
-                "ratio": advances / declines if declines > 0 else float('inf')
-            }
-        except Exception as e:
-            logging.error(f"Error calculating advance-decline ratio: {str(e)}")
-            return {"advances": 0, "declines": 0, "ratio": 0}
-
-    def get_sector_analysis(self, sector_key: str) -> dict:
-        """Get detailed analysis for a specific sector"""
-        try:
-            sector = yf.Sector(sector_key)
-            
-            # Get sector overview
-            overview = sector.overview
-            
-            # Get top companies
-            top_companies = sector.top_companies
-            
-            # Get top ETFs
-            top_etfs = sector.top_etfs
-            
-            # Get top mutual funds
-            top_mutual_funds = sector.top_mutual_funds
-            
-            # Get industries in the sector
-            industries = sector.industries
-            
-            # Get research reports
-            research_reports = sector.research_reports
-            
-            return {
-                "name": sector.name,
-                "key": sector.key,
-                "overview": overview,
-                "top_companies": top_companies.to_dict() if top_companies is not None else {},
-                "top_etfs": top_etfs,
-                "top_mutual_funds": top_mutual_funds,
-                "industries": industries.to_dict() if industries is not None else {},
-                "research_reports": research_reports,
-                "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
-        except Exception as e:
-            logging.error(f"Error in sector analysis: {str(e)}")
-            return None
-
-    def get_industry_analysis(self, industry_key: str) -> dict:
-        """Get detailed analysis for a specific industry"""
-        try:
-            industry = yf.Industry(industry_key)
-            
-            # Get industry overview
-            overview = industry.overview
-            
-            # Get top companies
-            top_companies = industry.top_companies
-            
-            # Get top performing companies
-            top_performing = industry.top_performing_companies
-            
-            # Get top growth companies
-            top_growth = industry.top_growth_companies
-            
-            # Get research reports
-            research_reports = industry.research_reports
-            
-            return {
-                "name": industry.name,
-                "key": industry.key,
-                "sector_key": industry.sector_key,
-                "sector_name": industry.sector_name,
-                "overview": overview,
-                "top_companies": top_companies.to_dict() if top_companies is not None else {},
-                "top_performing_companies": top_performing.to_dict() if top_performing is not None else {},
-                "top_growth_companies": top_growth.to_dict() if top_growth is not None else {},
-                "research_reports": research_reports,
-                "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
-        except Exception as e:
-            logging.error(f"Error in industry analysis: {str(e)}")
-            return None
-
-    def generate_detailed_response(self, intent: str, data: dict, sentiment: str) -> str:
-        """Generate detailed and natural responses with enhanced data"""
-        try:
-            if intent == 'sentiment_analysis' and data:
-                if 'error' in data:
-                    return f"Error: {data['error']}"
-                
-                # Create sentiment summary
-                sentiment_emoji = "🟢" if data['overall_sentiment'] == "Bullish" else "🔴" if data['overall_sentiment'] == "Bearish" else "⚪"
-                response = [
-                    f"Sentiment Analysis for {data['symbol']}:",
-                    f"{sentiment_emoji} Overall Sentiment: {data['overall_sentiment']}",
-                    f"Current Price: ₹{data['current_price']:.2f} ({data['price_change']:+.2f}%)",
-                    f"Sentiment Score: {data['sentiment_score']:.2f}",
-                    "",
-                    "News Sentiment Breakdown:",
-                    f"🟢 Positive: {data['news_sentiment']['positive']} ({data['news_sentiment']['positive_pct']:.1f}%)",
-                    f"⚪ Neutral: {data['news_sentiment']['neutral']} ({data['news_sentiment']['neutral_pct']:.1f}%)",
-                    f"🔴 Negative: {data['news_sentiment']['negative']} ({data['news_sentiment']['negative_pct']:.1f}%)",
-                    f"Total News Analyzed: {data['news_sentiment']['total']}",
-                    "",
-                    "Technical Indicators:",
-                    f"RSI ({data['technical_sentiment']['rsi']:.1f}): {data['technical_sentiment']['rsi_signal']}",
-                    f"MACD: {data['technical_sentiment']['macd_signal']}",
-                    f"Moving Average: {data['technical_sentiment']['ma_signal']}"
-                ]
-                
-                # Add recent news
-                if data['recent_news']:
-                    response.extend([
-                        "",
-                        "Recent News:"
-                    ])
-                    for article in data['recent_news']:
-                        news_emoji = "🟢" if article['sentiment']['label'] == "positive" else "🔴" if article['sentiment']['label'] == "negative" else "⚪"
-                        response.extend([
-                            f"{news_emoji} {article['title']}",
-                            f"   Sentiment: {article['sentiment']['label'].upper()} (Confidence: {article['sentiment']['score']:.2f})",
-                            f"   Time: {article['date']}",
-                            ""
-                        ])
-                
-                response.append(f"\nLast Updated: {data['last_updated']}")
-                return "\n".join(response)
-            
-            # Add sector analysis response
-            if intent == 'sector_analysis' and data:
-                response = (
-                    f"Sector Analysis for {data['name']}:\n"
-                    f"Overview: {data['overview']}\n\n"
-                )
-                
-                # Add top companies
-                if data.get('top_companies'):
-                    response += "Top Companies:\n"
-                    companies = data['top_companies']
-                    for company in companies[:5]:  # Show top 5 companies
-                        response += f"• {company['name']} ({company['symbol']})\n"
-                
-                # Add top ETFs
-                if data.get('top_etfs'):
-                    response += "\nTop ETFs:\n"
-                    for symbol, name in data['top_etfs'].items():
-                        response += f"• {name} ({symbol})\n"
-                
-                # Add industries
-                if data.get('industries'):
-                    response += "\nIndustries in this Sector:\n"
-                    industries = data['industries']
-                    for industry in industries[:5]:  # Show top 5 industries
-                        response += f"• {industry['name']} ({industry['market_weight']:.2f}%)\n"
-                
-                response += f"\nLast Updated: {data['last_updated']}"
-                return response
-            
-            # Add industry analysis response
-            elif intent == 'industry_analysis' and data:
-                response = (
-                    f"Industry Analysis for {data['name']}:\n"
-                    f"Sector: {data['sector_name']}\n"
-                    f"Overview: {data['overview']}\n\n"
-                )
-                
-                # Add top companies
-                if data.get('top_companies'):
-                    response += "Top Companies:\n"
-                    companies = data['top_companies']
-                    for company in companies[:5]:  # Show top 5 companies
-                        response += f"• {company['name']} ({company['symbol']})\n"
-                
-                # Add top performing companies
-                if data.get('top_performing_companies'):
-                    response += "\nTop Performing Companies:\n"
-                    companies = data['top_performing_companies']
-                    for company in companies[:3]:  # Show top 3 performers
-                        response += f"• {company['name']} ({company['symbol']}) - {company['performance']:.2f}%\n"
-                
-                # Add top growth companies
-                if data.get('top_growth_companies'):
-                    response += "\nTop Growth Companies:\n"
-                    companies = data['top_growth_companies']
-                    for company in companies[:3]:  # Show top 3 growth companies
-                        response += f"• {company['name']} ({company['symbol']}) - {company['growth']:.2f}%\n"
-                
-                response += f"\nLast Updated: {data['last_updated']}"
-                return response
-            
-            if intent == 'price_query' and data:
-                response = (
-                    f"The current price of {data['company_name']} is ₹{data['current_price']:.2f}. "
-                    f"Today's high is ₹{data['day_high']:.2f} and low is ₹{data['day_low']:.2f}. "
-                    f"Volume traded: {data['volume']:,}, P/E ratio: {data['pe_ratio']:.2f}, "
-                    f"Market Cap: ₹{data['market_cap']/10000000:.2f} Cr.\n\n"
-                )
-                
-                # Add financial metrics
-                if data.get('financial_data'):
-                    response += "Key Financial Metrics:\n"
-                    if data['financial_data'].get('income_statement'):
-                        income = data['financial_data']['income_statement']
-                        if income:
-                            response += f"- Revenue Growth: {data.get('revenue_growth', 0)*100:.2f}%\n"
-                            response += f"- Profit Margins: {data.get('profit_margins', 0)*100:.2f}%\n"
-                            response += f"- Operating Margins: {data.get('operating_margins', 0)*100:.2f}%\n"
-                
-                # Add analyst recommendations
-                if data.get('recommendations'):
-                    response += "\nAnalyst Recommendations:\n"
-                    recs = data['recommendations']
-                    if recs:
-                        response += f"- Consensus: {data.get('recommendation', 'neutral').upper()}\n"
-                        response += f"- Target Price: ₹{data.get('target_price', 0):.2f}\n"
-                        response += f"- Number of Analysts: {data.get('number_of_analysts', 0)}\n"
-                
-                # Add business summary
-                if data.get('business_summary'):
-                    response += f"\nBusiness Summary:\n{data['business_summary'][:200]}...\n"
-                
-                return response
-            
-            elif intent == 'market_activity':
-                if data:
-                    # Build response without market status
-                    response = []
-                    response.append(f"Nifty 50: ₹{data['nifty']['current']:.2f} ({data['nifty']['change_pct']:+.2f}%)")
-                    response.append(f"High: ₹{data['nifty']['high']:.2f}, Low: ₹{data['nifty']['low']:.2f}")
-                    response.append(f"Sensex: ₹{data['sensex']['current']:.2f} ({data['sensex']['change_pct']:+.2f}%)")
-                    response.append(f"High: ₹{data['sensex']['high']:.2f}, Low: ₹{data['sensex']['low']:.2f}")
-                    
-                    # Add sector performance
-                    if data.get('sector_performance'):
-                        response.append("\nSector Performance:")
-                        for sector, perf in data['sector_performance'].items():
-                            response.append(f"{sector}: {perf['change_pct']:+.2f}%")
-                    
-                    if data['advance_decline']['ratio'] != float('inf'):
-                        response.append(f"\nAdvance-Decline Ratio: {data['advance_decline']['ratio']:.2f}")
-                    
-                    response.append(f"\nLast Updated: {data['last_updated']}")
-                    return "\n".join(response)
-            
-            elif intent == 'term_query':
-                for term, explanation in self.market_terms.items():
-                    if term in data['term']:
-                        data = {'term': term, 'explanation': explanation}
-                        break
-            elif intent in ['analysis_query', 'summary_query'] and data:
-                data = {'symbol': data['term']}
-            
-            # Generate response
-            if not data['symbol'] and intent in ['price_query', 'news_query', 'analysis_query', 'summary_query', 'sentiment_analysis']:
-=======
 
     def get_advance_decline_ratio(self) -> dict:
         """Get advance-decline ratio for the market"""
@@ -1894,274 +1296,136 @@ class IndianStockChatbot:
             
             # Generate response
             if not symbol and intent in ['price_query', 'news_query', 'analysis_query', 'summary_query', 'sentiment_analysis']:
->>>>>>> b6047da6a02cac92003587009a2e085480af2c48
                 return "Could you please specify the full company name or stock symbol?"
             
             response = self.generate_detailed_response(intent, data, sentiment)
             return response
-<<<<<<< HEAD
-            
-        except Exception as e:
-            logging.error(f"Error generating response: {str(e)}")
-            return "I'm having trouble understanding. Could you please rephrase your question?"
-
-    def process_query(self, user_input: str) -> str:
-        """Process user query with enhanced functionality"""
-        try:
-            # Add to history
-            self.history.append(user_input)
-            
-            # Clean and normalize the query
-            cleaned_query = self.clean_query(user_input)
-            
-            # Check for portfolio analysis queries
-            if any(word in cleaned_query.lower() for word in ['portfolio', 'my stocks', 'my investments']):
-                if not self.portfolio["stocks"]:
-                    return "Your portfolio is empty. You can add stocks using the command: 'Add [symbol] [quantity] [price] to portfolio'"
-                
-                data = self.get_portfolio_analysis(list(self.portfolio["stocks"].keys()))
-                if data:
-                    response = "Portfolio Analysis:\n"
-                    total_investment = 0
-                    total_current = 0
-                    
-                    for symbol, details in data['stocks'].items():
-                        portfolio_data = self.portfolio["stocks"][symbol]
-                        investment = portfolio_data["quantity"] * portfolio_data["avg_price"]
-                        current_value = portfolio_data["quantity"] * details['price']
-                        profit_loss = current_value - investment
-                        profit_loss_pct = (profit_loss / investment) * 100
-                        
-                        response += f"\n{symbol}:\n"
-                        response += f"Quantity: {portfolio_data['quantity']}\n"
-                        response += f"Avg Price: ₹{portfolio_data['avg_price']:.2f}\n"
-                        response += f"Current Price: ₹{details['price']:.2f}\n"
-                        response += f"P/L: ₹{profit_loss:.2f} ({profit_loss_pct:+.2f}%)\n"
-                        
-                        total_investment += investment
-                        total_current += current_value
-                    
-                    total_pl = total_current - total_investment
-                    total_pl_pct = (total_pl / total_investment) * 100
-                    
-                    response += f"\nPortfolio Summary:\n"
-                    response += f"Total Investment: ₹{total_investment:.2f}\n"
-                    response += f"Current Value: ₹{total_current:.2f}\n"
-                    response += f"Total P/L: ₹{total_pl:.2f} ({total_pl_pct:+.2f}%)"
-                    return response
-                return "Unable to fetch portfolio analysis at the moment."
-            
-            # Check for watchlist queries
-            if any(word in cleaned_query.lower() for word in ['watchlist', 'watch list']):
-                if not self.watchlist["stocks"]:
-                    return "Your watchlist is empty. You can add stocks using the command: 'Add [symbol] to watchlist'"
-                
-                data = self.get_watchlist_analysis(self.watchlist["stocks"])
-                if data:
-                    response = "Watchlist Analysis:\n"
-                    for symbol, details in data['stocks'].items():
-                        response += f"\n{symbol}:\n"
-                        response += f"Price: ₹{details['price']:.2f}\n"
-                        response += f"Change: {details['change_pct']:+.2f}%\n"
-                        response += f"Volume: {details['volume']:,}\n"
-                        response += f"P/E Ratio: {details['pe_ratio']:.2f}\n"
-                        
-                        # Add technical indicators
-                        if 'technical_indicators' in details:
-                            tech = details['technical_indicators']
-                            response += f"RSI: {tech.get('rsi', 'N/A')}\n"
-                            response += f"MACD: {tech.get('macd', 'N/A')}\n"
-                            response += f"Signal: {tech.get('signal', 'N/A')}\n"
-                    
-                    if data['alerts']:
-                        response += "\nAlerts:\n"
-                        for alert in data['alerts']:
-                            response += f"- {alert}\n"
-                    return response
-                return "Unable to fetch watchlist analysis at the moment."
-            
-            # Check for market activity queries
-            if any(word in cleaned_query.lower() for word in ['market activity', 'market status', 'market overview']):
-                data = self.get_market_activity()
-                if data:
-                    response = "Market Activity Overview:\n"
-                    
-                    # Market indices
-                    response += "\nMarket Indices:\n"
-                    for index, details in data['indices'].items():
-                        response += f"{index}: {details['value']:.2f} ({details['change_pct']:+.2f}%)\n"
-                    
-                    # Sector performance
-                    response += "\nSector Performance:\n"
-                    for sector, perf in data['sector_performance'].items():
-                        response += f"{sector}: {perf['change_pct']:+.2f}%\n"
-                    
-                    # Market breadth
-                    if 'market_breadth' in data:
-                        breadth = data['market_breadth']
-                        response += f"\nMarket Breadth:\n"
-                        response += f"Advances: {breadth['advances']}\n"
-                        response += f"Declines: {breadth['declines']}\n"
-                        response += f"Unchanged: {breadth['unchanged']}\n"
-                        response += f"Advance/Decline Ratio: {breadth['adv_dec_ratio']:.2f}\n"
-                    
-                    # Top gainers and losers
-                    if 'top_gainers' in data:
-                        response += "\nTop Gainers:\n"
-                        for stock in data['top_gainers'][:5]:
-                            response += f"{stock['symbol']}: {stock['change_pct']:+.2f}%\n"
-                    
-                    if 'top_losers' in data:
-                        response += "\nTop Losers:\n"
-                        for stock in data['top_losers'][:5]:
-                            response += f"{stock['symbol']}: {stock['change_pct']:+.2f}%\n"
-                    
-                    return response
-                return "Unable to fetch market activity at the moment."
-            
-            # Check for sentiment analysis queries
-            if 'sentiment' in cleaned_query.lower():
-                symbol = self.get_stock_symbol(cleaned_query)
-                if symbol:
-                    data = self.get_sentiment_analysis(symbol)
-                    if data:
-                        response = f"Sentiment Analysis for {symbol}:\n"
-                        response += f"Overall Sentiment: {data['overall_sentiment']}\n"
-                        response += f"Sentiment Score: {data['sentiment_score']:.2f}\n"
-                        
-                        if 'news_sentiment' in data:
-                            response += "\nRecent News Sentiment:\n"
-                            for article in data['news_sentiment'][:3]:
-                                response += f"• {article['title']}\n"
-                                response += f"  Sentiment: {article['sentiment']} ({article['confidence']:.2f})\n"
-                        
-                        if 'technical_sentiment' in data:
-                            tech = data['technical_sentiment']
-                            response += "\nTechnical Indicators:\n"
-                            response += f"RSI: {tech['rsi']} ({tech['rsi_signal']})\n"
-                            response += f"MACD: {tech['macd']} ({tech['macd_signal']})\n"
-                            response += f"Moving Averages: {tech['ma_signal']}\n"
-                        
-                        return response
-                    return f"Unable to fetch sentiment analysis for {symbol} at the moment."
-                return "Please specify which stock's sentiment you'd like to know about."
-            
-            # Get intent and sentiment
-            intent, confidence, sentiment = self.classify_intent(cleaned_query)
-            
-            # Extract stock symbol
-            symbol = self.get_stock_symbol(cleaned_query)
-            
-            # Get relevant data based on intent
-            data = None
-            if intent == 'price_query' and symbol:
-                data = self.get_stock_details(symbol)
-            elif intent == 'news_query' and symbol:
-                data = self.fetch_company_news(symbol)
-            elif intent == 'term_query':
-                for term, explanation in self.market_terms.items():
-                    if term in cleaned_query:
-                        data = {'term': term, 'explanation': explanation}
-                        break
-            elif intent in ['analysis_query', 'summary_query'] and symbol:
-                data = {'symbol': symbol}
-            
-            # Generate response
-            if not symbol and intent in ['price_query', 'news_query', 'analysis_query', 'summary_query', 'sentiment_analysis']:
-                return "Could you please specify the full company name or stock symbol?"
-            
-            response = self.generate_detailed_response(intent, data, sentiment)
-            return response
-=======
->>>>>>> b6047da6a02cac92003587009a2e085480af2c48
             
         except Exception as e:
             logging.error(f"Error processing query: {str(e)}")
             return "I'm having trouble understanding. Could you please rephrase your question?"
-<<<<<<< HEAD
 
     def _load_portfolio(self) -> dict:
-        """Load user portfolio from storage"""
+        """Load user portfolio from file"""
         try:
-            portfolio_file = "portfolio.json"
-            if os.path.exists(portfolio_file):
-                with open(portfolio_file, 'r') as f:
+            if os.path.exists('portfolio.json'):
+                with open('portfolio.json', 'r') as f:
                     return json.load(f)
-            return {"stocks": {}, "last_updated": None}
+            return {}
         except Exception as e:
             logging.error(f"Error loading portfolio: {str(e)}")
-            return {"stocks": {}, "last_updated": None}
-
-    def _save_portfolio(self) -> None:
-        """Save user portfolio to storage"""
-        try:
-            portfolio_file = "portfolio.json"
-            with open(portfolio_file, 'w') as f:
-                json.dump(self.portfolio, f)
-        except Exception as e:
-            logging.error(f"Error saving portfolio: {str(e)}")
+            return {}
 
     def _load_watchlist(self) -> dict:
-        """Load user watchlist from storage"""
+        """Load user watchlist from file"""
         try:
-            watchlist_file = "watchlist.json"
-            if os.path.exists(watchlist_file):
-                with open(watchlist_file, 'r') as f:
+            if os.path.exists('watchlist.json'):
+                with open('watchlist.json', 'r') as f:
                     return json.load(f)
-            return {"stocks": [], "last_updated": None}
+            return {}
         except Exception as e:
             logging.error(f"Error loading watchlist: {str(e)}")
-            return {"stocks": [], "last_updated": None}
+            return {}
 
-    def _save_watchlist(self) -> None:
-        """Save user watchlist to storage"""
+    def add_to_portfolio(self, symbol: str, quantity: int) -> bool:
+        """Add stock to portfolio"""
         try:
-            watchlist_file = "watchlist.json"
-            with open(watchlist_file, 'w') as f:
-                json.dump(self.watchlist, f)
-        except Exception as e:
-            logging.error(f"Error saving watchlist: {str(e)}")
-
-    def add_to_portfolio(self, symbol: str, quantity: int, avg_price: float) -> bool:
-        """Add a stock to user's portfolio"""
-        try:
-            if symbol in self.portfolio["stocks"]:
-                # Update existing position
-                current = self.portfolio["stocks"][symbol]
-                total_quantity = current["quantity"] + quantity
-                total_cost = (current["quantity"] * current["avg_price"]) + (quantity * avg_price)
-                self.portfolio["stocks"][symbol] = {
-                    "quantity": total_quantity,
-                    "avg_price": total_cost / total_quantity,
-                    "last_updated": datetime.now().isoformat()
-                }
+            if not symbol.endswith('.NS'):
+                symbol = f"{symbol}.NS"
+            
+            if symbol in self.portfolio:
+                self.portfolio[symbol]['quantity'] += quantity
             else:
-                # Add new position
-                self.portfolio["stocks"][symbol] = {
-                    "quantity": quantity,
-                    "avg_price": avg_price,
-                    "last_updated": datetime.now().isoformat()
-                }
-            self.portfolio["last_updated"] = datetime.now().isoformat()
-            self._save_portfolio()
+                self.portfolio[symbol] = {'quantity': quantity}
+            
+            with open('portfolio.json', 'w') as f:
+                json.dump(self.portfolio, f)
             return True
         except Exception as e:
             logging.error(f"Error adding to portfolio: {str(e)}")
             return False
 
     def add_to_watchlist(self, symbol: str) -> bool:
-        """Add a stock to user's watchlist"""
+        """Add stock to watchlist"""
         try:
-            if symbol not in self.watchlist["stocks"]:
-                self.watchlist["stocks"].append(symbol)
-                self.watchlist["last_updated"] = datetime.now().isoformat()
-                self._save_watchlist()
-            return True
+            if not symbol.endswith('.NS'):
+                symbol = f"{symbol}.NS"
+            
+            if symbol not in self.watchlist:
+                self.watchlist[symbol] = {'added_date': datetime.now().strftime("%Y-%m-%d")}
+                with open('watchlist.json', 'w') as f:
+                    json.dump(self.watchlist, f)
+                return True
+            return False
         except Exception as e:
             logging.error(f"Error adding to watchlist: {str(e)}")
             return False
-=======
->>>>>>> b6047da6a02cac92003587009a2e085480af2c48
+
+    def is_market_open(self) -> bool:
+        """Check if Indian market is currently open with real-time data"""
+        try:
+            now = datetime.now()
+            
+            # Check if it's a weekend
+            if now.weekday() >= 5:  # Saturday (5) or Sunday (6)
+                return False
+            
+            # Check if it's a holiday (you can add more holidays)
+            holidays = [
+                "2024-01-26",  # Republic Day
+                "2024-03-08",  # Mahashivratri
+                "2024-03-25",  # Holi
+                "2024-04-09",  # Ram Navami
+                "2024-04-11",  # Mahavir Jayanti
+                "2024-04-17",  # Good Friday
+                "2024-05-01",  # Maharashtra Day
+                "2024-05-20",  # Lok Sabha Elections
+                "2024-06-17",  # Bakri Id
+                "2024-07-17",  # Muharram
+                "2024-08-15",  # Independence Day
+                "2024-10-02",  # Gandhi Jayanti
+                "2024-11-01",  # Diwali-Laxmi Pujan
+                "2024-11-15",  # Gurunanak Jayanti
+                "2024-12-25"   # Christmas
+            ]
+            
+            if now.strftime("%Y-%m-%d") in holidays:
+                return False
+            
+            # Define market hours
+            market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
+            market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+            
+            # Check if current time is within market hours
+            is_open = market_open <= now <= market_close
+            
+            # Additional check using NSE data to confirm market status
+            try:
+                nifty = yf.Ticker("^NSEI")
+                nifty_data = nifty.history(period="1d", interval="1m")
+                if not nifty_data.empty:
+                    last_update = nifty_data.index[-1]
+                    time_diff = (now - last_update).total_seconds() / 60
+                    # If last update is more than 5 minutes old, market might be closed
+                    if time_diff > 5:
+                        is_open = False
+            except:
+                pass  # If we can't get NSE data, rely on time-based check
+            
+            return is_open
+            
+        except Exception as e:
+            logging.error(f"Error checking market status: {str(e)}")
+            # Fallback to time-based check if there's an error
+            try:
+                now = datetime.now()
+                if now.weekday() >= 5:  # Weekend
+                    return False
+                market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
+                market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+                return market_open <= now <= market_close
+            except:
+                return False
 
 def main():
     try:
