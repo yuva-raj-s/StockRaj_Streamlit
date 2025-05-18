@@ -215,155 +215,95 @@ class IndianStockChatbot:
             return None
     
     def process_query(self, query):
-        """Process user query using ML models and generate response"""
+        """Process user query and generate response"""
         try:
-            # First try to get a response from the ML chatbot
-            try:
-                # --- INTEGRATION: Portfolio Analysis ---
-                if any(word in query.lower() for word in ['portfolio', 'my stocks', 'my investments']):
-                    # Use real portfolio data
-                    portfolio = load_portfolio()
-                    metrics = calculate_portfolio_metrics(portfolio)
-                    if metrics:
-                        response = "Portfolio Analysis:\n"
-                        for holding in metrics['holdings']:
-                            response += f"\n{holding['symbol']}:\n"
-                            response += f"Price: ₹{holding['current_price']:.2f}\n"
-                            response += f"Change: {holding['pnl_percent']:+.2f}%\n"
-                            response += f"P/E Ratio: N/A\n"  # You can add more details if needed
-                        response += f"\nTotal Value: ₹{metrics['total_value']:.2f}"
-                        response += f"\nTotal Change: {metrics['total_pnl_percent']:+.2f}%"
-                        return response
-                    return "Unable to fetch portfolio analysis at the moment."
-                # --- INTEGRATION: Watchlist Analysis ---
-                if any(word in query.lower() for word in ['watchlist', 'watch list']):
-                    # Use real watchlist data
-                    watchlist_manager = WatchlistManager()
-                    watchlist_data = watchlist_manager.get_watchlist_data()
-                    if not watchlist_data.empty:
-                        response = "Watchlist Analysis:\n"
-                        for idx, row in watchlist_data.iterrows():
-                            response += f"\n{row['Symbol']}:\n"
-                            response += f"Price: {row['Current Price']}\n"
-                            response += f"Change: {row['Change']}\n"
-                            response += f"Volume: N/A\n"  # You can add more details if needed
-                            response += f"P/E Ratio: {row['P/E Ratio']}\n"
-                        return response
-                    return "Unable to fetch watchlist analysis at the moment."
-                # --- END INTEGRATION ---
-                ml_response = self.ml_chatbot.process_query(query)
-                if ml_response and ml_response != "I'm having trouble understanding. Could you please rephrase your question?":
-                    return ml_response
-            except Exception as ml_error:
-                st.error(f"ML processing error: {str(ml_error)}")
-            
-            # If ML chatbot fails or returns a generic response, try specific query handling
-            query = query.lower()
-            
-            # Check for stock price query
-            if any(word in query for word in ["price", "value", "current price", "stock price"]):
-                # Extract stock symbol using ML chatbot's symbol detection
-                try:
-                    symbol = self.ml_chatbot.get_stock_symbol(query)
-                    if symbol:
-                        info = self.get_stock_info(symbol)
-                        if info:
-                            return f"The current price of {info['name']} ({info['symbol']}) is ₹{info['price']:,.2f} ({info['change_percent']:+.2f}%)"
-                except:
-                    # Fallback to basic symbol detection
-                    words = query.split()
-                    for word in words:
-                        if word.upper() in ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK"]:
-                            info = self.get_stock_info(word)
-                            if info:
-                                return f"The current price of {info['name']} ({info['symbol']}) is ₹{info['price']:,.2f} ({info['change_percent']:+.2f}%)"
-            
-            # Check for market activity query
-            if "market" in query and ("activity" in query or "status" in query):
-                activity = self.get_market_activity()
-                if activity:
-                    return f"Nifty 50: ₹{activity['nifty']['current']:,.2f} ({activity['nifty']['change_pct']:+.2f}%)\nSensex: ₹{activity['sensex']['current']:,.2f} ({activity['sensex']['change_pct']:+.2f}%)"
-            
             # Check for sentiment query
-            if "sentiment" in query:
+            if "sentiment" in query.lower():
                 try:
-                    # Use ML chatbot's sentiment analysis
+                    # Extract stock symbol using ML chatbot's symbol detection
                     symbol = self.ml_chatbot.get_stock_symbol(query)
+                    
+                    if not symbol:
+                        # Try to extract symbol from the query using common patterns
+                        if "for" in query.lower():
+                            parts = query.lower().split("for")
+                            if len(parts) > 1:
+                                potential_symbol = parts[1].strip().upper()
+                                if potential_symbol in ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK"]:
+                                    symbol = potential_symbol
+                    
                     if symbol:
+                        print(f"Processing sentiment analysis for {symbol}")
                         sentiment_data = self.ml_chatbot.get_sentiment_analysis(symbol)
+                        
                         if sentiment_data:
-                            return (
-                                f"Sentiment Analysis for {symbol}:\n"
-                                f"Overall Sentiment Score: {sentiment_data['sentiment_score']:.2f}\n"
-                                f"Market Context: {sentiment_data['market_context']}\n"
-                                f"Positive News: {sentiment_data['positive']}\n"
-                                f"Negative News: {sentiment_data['negative']}\n"
-                                f"Neutral News: {sentiment_data['neutral']}\n"
-                                f"Total News Analyzed: {sentiment_data['total_news']}"
-                            )
-                except:
-                    # Fallback to basic sentiment analysis
-                    words = query.split()
-                    for word in words:
-                        if word.upper() in ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK"]:
-                            sentiment = self.get_sentiment(f"{word}.NS")
-                            if sentiment:
-                                return f"The sentiment for {word} is {sentiment['label']} (Score: {sentiment['average']:.2f})"
-            
-            # Check for trading signals query
-            if any(phrase in query for phrase in ["trading signal", "buy signal", "sell signal", "when to buy", "when to sell"]):
-                try:
-                    symbol = self.ml_chatbot.get_stock_symbol(query)
-                    if symbol:
-                        signals = self.ml_chatbot.get_trading_signals(symbol)
-                        if signals:
-                            return (
-                                f"Trading Signals for {signals['symbol']}:\n"
-                                f"Current Price: ₹{signals['current_price']:.2f}\n"
-                                f"RSI Signal: {signals['signals']['RSI_Signal']}\n"
-                                f"MACD Signal: {signals['signals']['MACD_Signal']}\n"
-                                f"Bollinger Bands Signal: {signals['signals']['BB_Signal']}\n"
-                                f"Overall Signal: {signals['overall_signal']}"
-                            )
+                            # Format the response
+                            response = f"📊 Sentiment Analysis for {symbol}:\n\n"
+                            response += f"Current Price: ₹{sentiment_data['current_price']:,.2f} ({sentiment_data['price_change']:+.2f}%)\n"
+                            response += f"Overall Sentiment: {sentiment_data['market_context']}\n"
+                            response += f"Sentiment Score: {sentiment_data['sentiment_score']:.2f}\n\n"
+                            
+                            # News sentiment breakdown
+                            response += "📰 News Sentiment Breakdown:\n"
+                            response += f"Positive: {sentiment_data['positive']} articles\n"
+                            response += f"Negative: {sentiment_data['negative']} articles\n"
+                            response += f"Neutral: {sentiment_data['neutral']} articles\n"
+                            response += f"Total News Analyzed: {sentiment_data['total_news']}\n\n"
+                            
+                            # Technical indicators
+                            if sentiment_data['technical_indicators']['rsi'] is not None:
+                                response += "📈 Technical Indicators:\n"
+                                response += f"RSI: {sentiment_data['technical_indicators']['rsi']:.2f}\n"
+                                response += f"MACD: {sentiment_data['technical_indicators']['macd']:.2f}\n"
+                                response += f"MACD Signal: {sentiment_data['technical_indicators']['macd_signal']:.2f}\n\n"
+                            
+                            # Recent news
+                            if sentiment_data['recent_news']:
+                                response += "📰 Recent News:\n"
+                                for news in sentiment_data['recent_news']:
+                                    sentiment_emoji = "🟢" if news['sentiment'] > 0.1 else "🔴" if news['sentiment'] < -0.1 else "⚪"
+                                    response += f"{sentiment_emoji} {news['title']}\n"
+                                    response += f"   Source: {news['publisher']}\n"
+                                    response += f"   Published: {news['published']}\n\n"
+                            
+                            return response
+                        else:
+                            print(f"Failed to get sentiment data for {symbol}")
+                            return f"Unable to fetch sentiment analysis for {symbol} at the moment. Please try again later."
+                    else:
+                        return "Please specify which stock's sentiment you'd like to know about."
                 except Exception as e:
-                    st.error(f"Error getting trading signals: {str(e)}")
+                    print(f"Error in sentiment analysis: {str(e)}")
+                    return f"Error analyzing sentiment: {str(e)}"
             
-            # Check for market terms query
-            if any(word in query for word in ["what is", "explain", "define", "meaning of", "tell me about"]):
+            # Check for sector performance query
+            if any(word in query.lower() for word in ['sector', 'sectors', 'performance']):
                 try:
-                    # Use ML chatbot's market terms
-                    for term, explanation in self.ml_chatbot.market_terms.items():
-                        if term in query:
-                            return f"{term.upper()}: {explanation}"
-                except:
-                    pass
+                    from Market_Activity.Sector.sector_analysis import SectorAnalysis
+                    sector_analysis = SectorAnalysis()
+                    performance = sector_analysis.get_sector_performance()
+                    
+                    if performance:
+                        response = "📊 Sector Performance:\n\n"
+                        for sector, data in performance.items():
+                            change_emoji = "🟢" if data['change_percent'] > 0 else "🔴" if data['change_percent'] < 0 else "⚪"
+                            response += f"{change_emoji} {sector}:\n"
+                            response += f"   Price: ₹{data['current_price']:,.2f}\n"
+                            response += f"   Change: {data['change_percent']:+.2f}%\n"
+                            response += f"   Volume: {data['volume']:,}\n\n"
+                        return response
+                    else:
+                        return "Unable to fetch sector performance at the moment. Please try again later."
+                except Exception as e:
+                    print(f"Error in sector performance: {str(e)}")
+                    return f"Error fetching sector performance: {str(e)}"
             
-            # Check for watchlist query
-            if "watchlist" in query:
-                if self.watchlist:
-                    return f"Your watchlist contains: {', '.join(self.watchlist)}"
-                return "Your watchlist is empty"
-            
-            # Check for portfolio query
-            if "portfolio" in query:
-                if self.portfolio["holdings"]:
-                    holdings = []
-                    for symbol, data in self.portfolio["holdings"].items():
-                        info = self.get_stock_info(symbol)
-                        if info:
-                            holdings.append(f"{info['name']}: {data['quantity']} shares")
-                    return f"Your portfolio contains: {', '.join(holdings)}"
-                return "Your portfolio is empty"
-            
-            # If no specific response is generated, try ML chatbot's detailed response
-            try:
-                intent, confidence, sentiment = self.ml_chatbot.classify_intent(query)
-                return self.ml_chatbot.generate_detailed_response(intent, None, sentiment)
-            except:
-                return "I'm not sure about that. You can ask me about stock prices, market activity, sentiment analysis, your watchlist, or portfolio."
+            # Process other queries
+            return self.ml_chatbot.process_query(query)
             
         except Exception as e:
-            return f"I encountered an error: {str(e)}"
+            print(f"Error processing query: {str(e)}")
+            return "I'm having trouble understanding. Could you please rephrase your question?"
 
 def show_chat():
     """Display the AI chat page"""
@@ -380,10 +320,7 @@ def show_chat():
             "Show market activity",
             "What's the sentiment for Reliance?",
             "Show my watchlist",
-            "Explain what is IPO?",
-            "Show sector performance",
-            "What are the trading signals for HDFC Bank?",
-            "Show my portfolio analysis"
+            "Show my portfolio"
         ]
 
     # Custom CSS
@@ -729,8 +666,8 @@ def show_chat():
         st.markdown('<div class="section-title">🔍 Recent Searches</div>', unsafe_allow_html=True)
         if st.session_state.history:
             recent_searches = [msg[0] for msg in st.session_state.history[-5:]]
-            for search in recent_searches:
-                if st.button(search, key=f"recent_{search}"):
+            for i, search in enumerate(recent_searches):
+                if st.button(search, key=f"recent_search_{i}_{hash(search)}"):
                     st.session_state.user_input = search
                     st.experimental_rerun()
         else:

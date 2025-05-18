@@ -168,38 +168,107 @@ def get_top_indian_stocks(limit: int = 10) -> List[Dict]:
         logger.error(f"Error in top stocks: {str(e)}")
         return []
 
+def get_relative_time(published_date: datetime) -> str:
+    """
+    Convert datetime to relative time string (e.g., '2 mins ago', '1 hour ago')
+    """
+    now = datetime.now(pytz.UTC)
+    diff = now - published_date
+    
+    if diff.days > 0:
+        if diff.days == 1:
+            return "1 day ago"
+        return f"{diff.days} days ago"
+    
+    seconds = diff.seconds
+    if seconds < 60:
+        return "just now"
+    elif seconds < 3600:
+        minutes = seconds // 60
+        return f"{minutes} {'min' if minutes == 1 else 'mins'} ago"
+    else:
+        hours = seconds // 3600
+        return f"{hours} {'hour' if hours == 1 else 'hours'} ago"
+
 def fetch_financial_news() -> List[Dict]:
     """
-    Scrape RSS feeds from Indian financial news sources.
-    Returns headline, source, link.
+    Fetch real-time financial news from multiple sources.
+    Returns headline, source, link, and published date.
     """
     try:
         news_sources = {
-            'Bloomberg Quint': 'https://www.bloombergquint.com/feeds/sitemap_index.xml',
+            'Google Finance': 'https://news.google.com/rss/search?q=indian+stocks&hl=en-IN&gl=IN&ceid=IN:en',
+            'Money Control': 'https://www.moneycontrol.com/rss/latestnews.xml',
             'Economic Times': 'https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms',
-            'MoneyControl': 'https://www.moneycontrol.com/rss/latestnews.xml',
-            'Google News': 'https://news.google.com/rss/search?q=indian+stocks&hl=en-IN&gl=IN&ceid=IN:en'
+            'Financial Express': 'https://www.financialexpress.com/feed/',
+            'Business Standard': 'https://www.business-standard.com/rss/markets-101.rss'
         }
         
         all_news = []
+        ist = pytz.timezone('Asia/Kolkata')
+        current_time = datetime.now(ist)
+        
         for source, url in news_sources.items():
             try:
                 feed = feedparser.parse(url)
-                for entry in feed.entries[:5]:  # Get top 5 news from each source
-                    all_news.append({
-                        'headline': entry.title,
-                        'source': source,
-                        'link': entry.link,
-                        'published_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    })
+                for entry in feed.entries:
+                    # Parse the published date
+                    try:
+                        # Try to parse the date with timezone
+                        published_date = datetime.strptime(entry.published, '%a, %d %b %Y %H:%M:%S %z')
+                    except:
+                        try:
+                            # Try parsing without timezone
+                            published_date = datetime.strptime(entry.published, '%a, %d %b %Y %H:%M:%S')
+                            # Make it timezone-aware with IST
+                            published_date = ist.localize(published_date)
+                        except:
+                            # If all parsing fails, use current time
+                            published_date = current_time
+                    
+                    # Only add news from the last 24 hours
+                    if (current_time - published_date).total_seconds() <= 86400:  # 24 hours in seconds
+                        all_news.append({
+                            'headline': entry.title,
+                            'source': source,
+                            'link': entry.link,
+                            'published_date': published_date,
+                            'relative_time': get_relative_time(published_date),
+                            'description': entry.get('description', '')
+                        })
             except Exception as e:
                 logger.error(f"Error fetching news from {source}: {str(e)}")
                 continue
         
-        # Sort by published date
+        # Sort by published date (newest first)
         all_news.sort(key=lambda x: x['published_date'], reverse=True)
-        return all_news[:20]  # Return top 20 news items
+        return all_news
         
     except Exception as e:
         logger.error(f"Error fetching news: {str(e)}")
+        return []
+
+# Create a cache for news with 5-minute TTL
+news_cache = TTLCache(ttl_seconds=300)
+
+def get_latest_news(limit: int = 5, offset: int = 0) -> List[Dict]:
+    """
+    Get latest financial news with pagination support.
+    Uses cache to prevent too frequent API calls.
+    """
+    try:
+        # Try to get from cache first
+        cached_news = news_cache.get('latest_news')
+        if cached_news is None:
+            # If not in cache, fetch new data
+            all_news = fetch_financial_news()
+            news_cache.set('latest_news', all_news)
+        else:
+            all_news = cached_news
+        
+        # Apply pagination
+        return all_news[offset:offset + limit]
+        
+    except Exception as e:
+        logger.error(f"Error getting latest news: {str(e)}")
         return [] 

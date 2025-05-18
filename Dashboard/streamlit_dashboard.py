@@ -10,6 +10,9 @@ import pandas as pd
 # Add the project root to Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Import from market_data module
+from Dashboard.utils.market_data import get_latest_news
+
 def get_marquee_data(symbols):
     """Get live market data for marquee stocks"""
     try:
@@ -76,28 +79,6 @@ def get_top_indian_stocks(limit=10):
         return pd.DataFrame(data)
     except Exception as e:
         st.error(f"Error fetching top stocks: {str(e)}")
-        return None
-
-def fetch_financial_news():
-    """Fetch latest financial news"""
-    try:
-        # This is a placeholder. In a real application, you would integrate with a news API
-        return [
-            {
-                'headline': 'Market Update: Indian stocks trade higher',
-                'source': 'Financial Express',
-                'link': 'https://www.financialexpress.com',
-                'published_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            },
-            {
-                'headline': 'RBI keeps repo rate unchanged',
-                'source': 'Economic Times',
-                'link': 'https://economictimes.indiatimes.com',
-                'published_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            }
-        ]
-    except Exception as e:
-        st.error(f"Error fetching news: {str(e)}")
         return None
 
 def show_dashboard():
@@ -173,13 +154,68 @@ def show_dashboard():
 
     # Financial News Section
     st.header("📰 Latest Financial News")
+    
+    # Add refresh button
+    col1, col2 = st.columns([6, 1])
+    with col2:
+        if st.button("🔄 Refresh", key="refresh_news"):
+            st.cache_data.clear()
+            st.experimental_rerun()
+    
     try:
-        news_data = fetch_financial_news()
+        # Initialize session state for pagination if not exists
+        if 'news_offset' not in st.session_state:
+            st.session_state.news_offset = 0
+        
+        # Get latest news with pagination
+        news_data = get_latest_news(limit=5, offset=st.session_state.news_offset)
+        
         if news_data:
+            # Display news items
             for news in news_data:
-                with st.expander(f"{news['headline']} - {news['source']}"):
-                    st.markdown(f"[Read more]({news['link']})")
-                    st.caption(f"Published: {news['published_date']}")
+                # Create a dark mode card with clickable link
+                st.markdown(
+                    f"""
+                    <div style='
+                        background-color: #1E1E1E;
+                        border-radius: 6px;
+                        padding: 16px;
+                        margin-bottom: 12px;
+                        border-left: 4px solid #00B4D8;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                        transition: all 0.3s ease;
+                    '>
+                        <a href='{news['link']}' target='_blank' style='text-decoration: none; color: inherit;'>
+                            <p style='
+                                margin: 0;
+                                font-weight: 500;
+                                color: #FFFFFF;
+                                font-size: 1rem;
+                                line-height: 1.4;
+                            '>{news['headline']}</p>
+                            <p style='
+                                margin: 8px 0 0 0;
+                                font-size: 0.85rem;
+                                color: #00B4D8;
+                                display: flex;
+                                align-items: center;
+                                gap: 8px;
+                            '>
+                                <span style='color: #666666;'>{news['source']}</span>
+                                <span style='color: #666666;'>•</span>
+                                <span style='color: #666666;'>{news['relative_time']}</span>
+                            </p>
+                        </a>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+            
+            # Add "Load More" button if there are more news items
+            if len(news_data) == 5:  # If we got a full page of news
+                if st.button("Load More", key="load_more_news"):
+                    st.session_state.news_offset += 5
+                    st.experimental_rerun()
         else:
             st.warning("No news available at the moment.")
     except Exception as e:
