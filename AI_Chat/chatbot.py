@@ -39,7 +39,11 @@ class IndianStockChatbot:
             # Initialize models
             self.models = {
                 'intent': pipeline("text-classification", model="distilbert-base-uncased-finetuned-sst-2-english"),
+<<<<<<< HEAD
                 'sentiment': pipeline("sentiment-analysis", model="mrm8488/distilroberta-finetuned-financial-news-sentiment-analysis"),
+=======
+                'sentiment': pipeline("sentiment-analysis", model="distilbert-base-uncased-finetuned-sst-2-english"),
+>>>>>>> b6047da6a02cac92003587009a2e085480af2c48
                 'text_qa': pipeline("question-answering", model="distilbert-base-cased-distilled-squad")
             }
             
@@ -656,6 +660,7 @@ class IndianStockChatbot:
                 ticker = yf.Ticker("^NSEI")
             elif index_symbol.upper() == "SENSEX":
                 ticker = yf.Ticker("^BSESN")
+<<<<<<< HEAD
             else:
                 return None
             
@@ -908,6 +913,190 @@ class IndianStockChatbot:
         
         return base_score, weighted_addition
 
+=======
+            else:
+                return None
+            
+            # Get historical data
+            hist = ticker.history(period="1d")
+            
+            # Calculate changes
+            current = hist['Close'].iloc[-1]
+            open_price = hist['Open'].iloc[0]
+            high = hist['High'].iloc[-1]
+            low = hist['Low'].iloc[-1]
+            volume = hist['Volume'].iloc[-1]
+            
+            change = current - open_price
+            change_pct = (change / open_price) * 100
+            
+            return {
+                "symbol": index_symbol.upper(),
+                "current": current,
+                "change": change,
+                "change_pct": change_pct,
+                "open": open_price,
+                "high": high,
+                "low": low,
+                "volume": volume,
+                "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+        except Exception as e:
+            logging.error(f"Error fetching index data: {str(e)}")
+            return None
+
+    def get_portfolio_analysis(self, symbols: list) -> dict:
+        """Analyze a portfolio of stocks"""
+        try:
+            portfolio = {}
+            total_value = 0
+            total_change = 0
+            
+            for symbol in symbols:
+                if not symbol.endswith('.NS'):
+                    symbol = f"{symbol}.NS"
+                ticker = yf.Ticker(symbol)
+                info = ticker.info
+                
+                current_price = info.get("currentPrice", 0)
+                prev_close = info.get("previousClose", 0)
+                change = current_price - prev_close
+                change_pct = (change / prev_close) * 100
+                
+                portfolio[symbol.replace('.NS', '')] = {
+                    "price": current_price,
+                    "change": change,
+                    "change_pct": change_pct,
+                    "pe_ratio": info.get("trailingPE", 0),
+                    "market_cap": info.get("marketCap", 0)
+                }
+                
+                total_value += current_price
+                total_change += change
+            
+            return {
+                "stocks": portfolio,
+                "total_value": total_value,
+                "total_change": total_change,
+                "total_change_pct": (total_change / total_value) * 100 if total_value > 0 else 0
+            }
+        except Exception as e:
+            logging.error(f"Error analyzing portfolio: {str(e)}")
+            return None
+
+    def get_sentiment_analysis(self, symbol: str) -> dict:
+        """Get detailed sentiment analysis for a stock using enhanced yfinance features"""
+        try:
+            if not symbol.endswith('.NS'):
+                symbol = f"{symbol}.NS"
+            
+            # Get stock data
+            ticker = yf.Ticker(symbol)
+            hist = ticker.history(period="1d")
+            info = ticker.info
+            
+            if hist.empty:
+                return {
+                    "symbol": symbol.replace('.NS', ''),
+                    "error": "No price data available"
+                }
+            
+            # Get analyst recommendations
+            recommendations = ticker.recommendations
+            recommendation_summary = ticker.recommendations_summary
+            
+            # Get earnings estimates
+            earnings_estimate = ticker.earnings_estimate
+            revenue_estimate = ticker.revenue_estimate
+            
+            # Get earnings history
+            earnings_history = ticker.earnings_history
+            
+            # Get EPS trend
+            eps_trend = ticker.eps_trend
+            
+            # Get EPS revisions
+            eps_revisions = ticker.eps_revisions
+            
+            # Get growth estimates
+            growth_estimates = ticker.growth_estimates
+            
+            # Calculate price change
+            current_price = hist['Close'].iloc[-1]
+            open_price = hist['Open'].iloc[0]
+            price_change = current_price - open_price
+            price_change_pct = (price_change / open_price) * 100
+            
+            # Get news and analyze sentiment
+            news = self.fetch_company_news(symbol)
+            
+            if not news:
+                return {
+                    "symbol": symbol.replace('.NS', ''),
+                    "sentiment_score": 0,
+                    "positive": 0,
+                    "negative": 0,
+                    "neutral": 0,
+                    "total_news": 0,
+                    "recent_news": [],
+                    "price_change": price_change_pct,
+                    "current_price": current_price,
+                    "message": "No recent news found for analysis."
+                }
+            
+            # Calculate sentiment scores
+            positive_news = [article for article in news if article['sentiment'] == 'positive']
+            negative_news = [article for article in news if article['sentiment'] == 'negative']
+            neutral_news = [article for article in news if article['sentiment'] == 'neutral']
+            
+            positive_count = len(positive_news)
+            negative_count = len(negative_news)
+            neutral_count = len(neutral_news)
+            
+            # Calculate weighted scores
+            positive_score = sum(article['confidence'] for article in positive_news)
+            negative_score = sum(article['confidence'] for article in negative_news)
+            neutral_score = sum(article['confidence'] for article in neutral_news)
+            
+            # Calculate overall sentiment score (-100 to +100)
+            total_score = positive_score + negative_score + neutral_score
+            if total_score > 0:
+                sentiment_score = ((positive_score - negative_score) / total_score) * 100
+            else:
+                sentiment_score = 0
+            
+            # Determine market context
+            market_context = "bullish" if price_change_pct > 0 else "bearish"
+            
+            # Sort news by date (most recent first)
+            news.sort(key=lambda x: x['date'], reverse=True)
+            
+            return {
+                "symbol": symbol.replace('.NS', ''),
+                "sentiment_score": sentiment_score,
+                "positive": positive_count,
+                "negative": negative_count,
+                "neutral": neutral_count,
+                "total_news": len(news),
+                "recent_news": news[:3],
+                "price_change": price_change_pct,
+                "current_price": current_price,
+                "market_context": market_context,
+                "analyst_recommendations": recommendations.to_dict() if recommendations is not None else {},
+                "recommendation_summary": recommendation_summary.to_dict() if recommendation_summary is not None else {},
+                "earnings_estimate": earnings_estimate.to_dict() if earnings_estimate is not None else {},
+                "revenue_estimate": revenue_estimate.to_dict() if revenue_estimate is not None else {},
+                "earnings_history": earnings_history.to_dict() if earnings_history is not None else {},
+                "eps_trend": eps_trend.to_dict() if eps_trend is not None else {},
+                "eps_revisions": eps_revisions.to_dict() if eps_revisions is not None else {},
+                "growth_estimates": growth_estimates.to_dict() if growth_estimates is not None else {},
+                "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+        except Exception as e:
+            logging.error(f"Error in sentiment analysis: {str(e)}")
+            return None
+
+>>>>>>> b6047da6a02cac92003587009a2e085480af2c48
     def get_watchlist_analysis(self, symbols: list) -> dict:
         """Analyze stocks in watchlist"""
         try:
@@ -1010,6 +1199,7 @@ class IndianStockChatbot:
                 return market_open <= now <= market_close
             except:
                 return False
+<<<<<<< HEAD
 
     def get_advance_decline_ratio(self) -> dict:
         """Get advance-decline ratio for the market"""
@@ -1285,10 +1475,431 @@ class IndianStockChatbot:
             
             # Generate response
             if not data['symbol'] and intent in ['price_query', 'news_query', 'analysis_query', 'summary_query', 'sentiment_analysis']:
+=======
+
+    def get_advance_decline_ratio(self) -> dict:
+        """Get advance-decline ratio for the market"""
+        try:
+            nifty = yf.Ticker("^NSEI")
+            components = nifty.info.get("components", [])
+            
+            advances = 0
+            declines = 0
+            
+            for symbol in components[:50]:  # Check top 50 stocks
+                if not symbol.endswith('.NS'):
+                    symbol = f"{symbol}.NS"
+                ticker = yf.Ticker(symbol)
+                info = ticker.info
+                
+                if info.get("currentPrice", 0) > info.get("previousClose", 0):
+                    advances += 1
+                else:
+                    declines += 1
+            
+            return {
+                "advances": advances,
+                "declines": declines,
+                "ratio": advances / declines if declines > 0 else float('inf')
+            }
+        except Exception as e:
+            logging.error(f"Error calculating advance-decline ratio: {str(e)}")
+            return {"advances": 0, "declines": 0, "ratio": 0}
+
+    def get_sector_analysis(self, sector_key: str) -> dict:
+        """Get detailed analysis for a specific sector"""
+        try:
+            sector = yf.Sector(sector_key)
+            
+            # Get sector overview
+            overview = sector.overview
+            
+            # Get top companies
+            top_companies = sector.top_companies
+            
+            # Get top ETFs
+            top_etfs = sector.top_etfs
+            
+            # Get top mutual funds
+            top_mutual_funds = sector.top_mutual_funds
+            
+            # Get industries in the sector
+            industries = sector.industries
+            
+            # Get research reports
+            research_reports = sector.research_reports
+            
+            return {
+                "name": sector.name,
+                "key": sector.key,
+                "overview": overview,
+                "top_companies": top_companies.to_dict() if top_companies is not None else {},
+                "top_etfs": top_etfs,
+                "top_mutual_funds": top_mutual_funds,
+                "industries": industries.to_dict() if industries is not None else {},
+                "research_reports": research_reports,
+                "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+        except Exception as e:
+            logging.error(f"Error in sector analysis: {str(e)}")
+            return None
+
+    def get_industry_analysis(self, industry_key: str) -> dict:
+        """Get detailed analysis for a specific industry"""
+        try:
+            industry = yf.Industry(industry_key)
+            
+            # Get industry overview
+            overview = industry.overview
+            
+            # Get top companies
+            top_companies = industry.top_companies
+            
+            # Get top performing companies
+            top_performing = industry.top_performing_companies
+            
+            # Get top growth companies
+            top_growth = industry.top_growth_companies
+            
+            # Get research reports
+            research_reports = industry.research_reports
+            
+            return {
+                "name": industry.name,
+                "key": industry.key,
+                "sector_key": industry.sector_key,
+                "sector_name": industry.sector_name,
+                "overview": overview,
+                "top_companies": top_companies.to_dict() if top_companies is not None else {},
+                "top_performing_companies": top_performing.to_dict() if top_performing is not None else {},
+                "top_growth_companies": top_growth.to_dict() if top_growth is not None else {},
+                "research_reports": research_reports,
+                "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+        except Exception as e:
+            logging.error(f"Error in industry analysis: {str(e)}")
+            return None
+
+    def generate_detailed_response(self, intent: str, data: dict, sentiment: str) -> str:
+        """Generate detailed and natural responses with enhanced data"""
+        try:
+            # Add sector analysis response
+            if intent == 'sector_analysis' and data:
+                response = (
+                    f"Sector Analysis for {data['name']}:\n"
+                    f"Overview: {data['overview']}\n\n"
+                )
+                
+                # Add top companies
+                if data.get('top_companies'):
+                    response += "Top Companies:\n"
+                    companies = data['top_companies']
+                    for company in companies[:5]:  # Show top 5 companies
+                        response += f"• {company['name']} ({company['symbol']})\n"
+                
+                # Add top ETFs
+                if data.get('top_etfs'):
+                    response += "\nTop ETFs:\n"
+                    for symbol, name in data['top_etfs'].items():
+                        response += f"• {name} ({symbol})\n"
+                
+                # Add industries
+                if data.get('industries'):
+                    response += "\nIndustries in this Sector:\n"
+                    industries = data['industries']
+                    for industry in industries[:5]:  # Show top 5 industries
+                        response += f"• {industry['name']} ({industry['market_weight']:.2f}%)\n"
+                
+                response += f"\nLast Updated: {data['last_updated']}"
+                return response
+            
+            # Add industry analysis response
+            elif intent == 'industry_analysis' and data:
+                response = (
+                    f"Industry Analysis for {data['name']}:\n"
+                    f"Sector: {data['sector_name']}\n"
+                    f"Overview: {data['overview']}\n\n"
+                )
+                
+                # Add top companies
+                if data.get('top_companies'):
+                    response += "Top Companies:\n"
+                    companies = data['top_companies']
+                    for company in companies[:5]:  # Show top 5 companies
+                        response += f"• {company['name']} ({company['symbol']})\n"
+                
+                # Add top performing companies
+                if data.get('top_performing_companies'):
+                    response += "\nTop Performing Companies:\n"
+                    companies = data['top_performing_companies']
+                    for company in companies[:3]:  # Show top 3 performers
+                        response += f"• {company['name']} ({company['symbol']}) - {company['performance']:.2f}%\n"
+                
+                # Add top growth companies
+                if data.get('top_growth_companies'):
+                    response += "\nTop Growth Companies:\n"
+                    companies = data['top_growth_companies']
+                    for company in companies[:3]:  # Show top 3 growth companies
+                        response += f"• {company['name']} ({company['symbol']}) - {company['growth']:.2f}%\n"
+                
+                response += f"\nLast Updated: {data['last_updated']}"
+                return response
+            
+            if intent == 'price_query' and data:
+                response = (
+                    f"The current price of {data['company_name']} is ₹{data['current_price']:.2f}. "
+                    f"Today's high is ₹{data['day_high']:.2f} and low is ₹{data['day_low']:.2f}. "
+                    f"Volume traded: {data['volume']:,}, P/E ratio: {data['pe_ratio']:.2f}, "
+                    f"Market Cap: ₹{data['market_cap']/10000000:.2f} Cr.\n\n"
+                )
+                
+                # Add financial metrics
+                if data.get('financial_data'):
+                    response += "Key Financial Metrics:\n"
+                    if data['financial_data'].get('income_statement'):
+                        income = data['financial_data']['income_statement']
+                        if income:
+                            response += f"- Revenue Growth: {data.get('revenue_growth', 0)*100:.2f}%\n"
+                            response += f"- Profit Margins: {data.get('profit_margins', 0)*100:.2f}%\n"
+                            response += f"- Operating Margins: {data.get('operating_margins', 0)*100:.2f}%\n"
+                
+                # Add analyst recommendations
+                if data.get('recommendations'):
+                    response += "\nAnalyst Recommendations:\n"
+                    recs = data['recommendations']
+                    if recs:
+                        response += f"- Consensus: {data.get('recommendation', 'neutral').upper()}\n"
+                        response += f"- Target Price: ₹{data.get('target_price', 0):.2f}\n"
+                        response += f"- Number of Analysts: {data.get('number_of_analysts', 0)}\n"
+                
+                # Add business summary
+                if data.get('business_summary'):
+                    response += f"\nBusiness Summary:\n{data['business_summary'][:200]}...\n"
+                
+                return response
+            
+            elif intent == 'market_activity':
+                if data:
+                    # Build response without market status
+                    response = []
+                    response.append(f"Nifty 50: ₹{data['nifty']['current']:.2f} ({data['nifty']['change_pct']:+.2f}%)")
+                    response.append(f"High: ₹{data['nifty']['high']:.2f}, Low: ₹{data['nifty']['low']:.2f}")
+                    response.append(f"Sensex: ₹{data['sensex']['current']:.2f} ({data['sensex']['change_pct']:+.2f}%)")
+                    response.append(f"High: ₹{data['sensex']['high']:.2f}, Low: ₹{data['sensex']['low']:.2f}")
+                    
+                    # Add sector performance
+                    if data.get('sector_performance'):
+                        response.append("\nSector Performance:")
+                        for sector, perf in data['sector_performance'].items():
+                            response.append(f"{sector}: {perf['change_pct']:+.2f}%")
+                    
+                    if data['advance_decline']['ratio'] != float('inf'):
+                        response.append(f"\nAdvance-Decline Ratio: {data['advance_decline']['ratio']:.2f}")
+                    
+                    response.append(f"\nLast Updated: {data['last_updated']}")
+                    return "\n".join(response)
+            
+            elif intent == 'sentiment_analysis' and data:
+                if 'error' in data:
+                    return f"Error: {data['error']}"
+                
+                response = (
+                    f"Sentiment Analysis for {data['symbol']}:\n"
+                    f"Current Price: ₹{data['current_price']:.2f} ({data['price_change']:+.2f}%)\n"
+                    f"Overall Sentiment Score: {data['sentiment_score']:.2f}\n"
+                    f"Market Context: {data['market_context']}\n\n"
+                    f"News Analysis:\n"
+                    f"- Positive News: {data['positive']}\n"
+                    f"- Negative News: {data['negative']}\n"
+                    f"- Neutral News: {data['neutral']}\n"
+                    f"Total News Analyzed: {data['total_news']}\n"
+                )
+                
+                # Add analyst recommendations
+                if data.get('analyst_recommendations'):
+                    response += "\nAnalyst Recommendations:\n"
+                    if data.get('recommendation_summary'):
+                        summary = data['recommendation_summary']
+                        response += f"- Consensus: {summary.get('recommendation', 'neutral').upper()}\n"
+                        response += f"- Target Price: ₹{summary.get('targetMeanPrice', 0):.2f}\n"
+                
+                # Add earnings estimates
+                if data.get('earnings_estimate'):
+                    response += "\nEarnings Estimates:\n"
+                    earnings = data['earnings_estimate']
+                    if earnings:
+                        response += f"- Next Quarter: ₹{earnings.get('nextQuarter', 0):.2f}\n"
+                        response += f"- Current Year: ₹{earnings.get('currentYear', 0):.2f}\n"
+                
+                # Add growth estimates
+                if data.get('growth_estimates'):
+                    response += "\nGrowth Estimates:\n"
+                    growth = data['growth_estimates']
+                    if growth:
+                        response += f"- Next 5 Years: {growth.get('next5Years', 0)*100:.2f}%\n"
+                
+                # Add recent news
+                response += "\nRecent News:\n"
+                for article in data['recent_news']:
+                    response += (
+                        f"• {article['title']}\n"
+                        f"  Sentiment: {article['sentiment'].upper()} "
+                        f"(Confidence: {article['confidence']:.2f})\n"
+                        f"  Time: {article['date']}\n"
+                    )
+                
+                response += f"\nLast Updated: {data['last_updated']}"
+                return response
+            
+            elif intent == 'analysis_query' and data:
+                analysis = self.get_stock_analysis(data.get('symbol'))
+                if analysis:
+                    trend = "upward" if analysis['price_change'] > 0 else "downward"
+                    ma_trend = "above" if analysis['current_price'] > analysis['ma_20'] else "below"
+                    
+                    response = (
+                        f"{analysis['company_name']} is currently trading at ₹{analysis['current_price']:.2f}, "
+                        f"showing a {trend} trend with {abs(analysis['price_change_pct']):.2f}% change. "
+                        f"The stock is trading {ma_trend} its 20-day moving average. "
+                        f"Market cap: ₹{analysis['market_cap']/10000000:.2f} Cr, "
+                        f"P/E ratio: {analysis['pe_ratio']:.2f}. "
+                        f"Analyst recommendation: {analysis['recommendation']}.\n\n"
+                    )
+                    
+                    # Add financial analysis
+                    if data.get('financial_data'):
+                        response += "Financial Analysis:\n"
+                        financial = data['financial_data']
+                        if financial.get('income_statement'):
+                            response += f"- Revenue Growth: {data.get('revenue_growth', 0)*100:.2f}%\n"
+                            response += f"- Profit Margins: {data.get('profit_margins', 0)*100:.2f}%\n"
+                            response += f"- Operating Margins: {data.get('operating_margins', 0)*100:.2f}%\n"
+                    
+                    # Add technical analysis
+                    response += "\nTechnical Analysis:\n"
+                    response += f"- 20-day MA: ₹{analysis['ma_20']:.2f}\n"
+                    response += f"- 50-day MA: ₹{analysis['ma_50']:.2f}\n"
+                    response += f"- 52-week High: ₹{analysis['fifty_two_week_high']:.2f}\n"
+                    response += f"- 52-week Low: ₹{analysis['fifty_two_week_low']:.2f}\n"
+                    
+                    # Add news context
+                    news = self.fetch_company_news(analysis['company_name'])
+                    if news:
+                        response += "\nRecent Developments:\n"
+                        for article in news[:2]:
+                            response += f"• {article['title']} ({article['sentiment'].upper()})\n"
+                    
+                    return response
+            
+            return "I can help you with stock prices, news, and market terms. What would you like to know?"
+            
+        except Exception as e:
+            logging.error(f"Error generating response: {str(e)}")
+            return "I'm having trouble understanding. Could you please rephrase your question?"
+
+    def process_query(self, user_input: str) -> str:
+        """Process user query with enhanced functionality"""
+        try:
+            # Add to history
+            self.history.append(user_input)
+            
+            # Clean and normalize the query
+            cleaned_query = self.clean_query(user_input)
+            
+            # Check for sector performance queries
+            if any(word in cleaned_query.lower() for word in ['sector performance', 'sector', 'sectors']):
+                data = self.get_market_activity()
+                if data and 'sector_performance' in data:
+                    response = "Sector Performance:\n"
+                    for sector, perf in data['sector_performance'].items():
+                        response += f"{sector}: {perf['change_pct']:+.2f}%\n"
+                    return response
+                return "Unable to fetch sector performance data at the moment."
+            
+            # Check for IPO queries
+            if 'ipo' in cleaned_query.lower():
+                return "IPO (Initial Public Offering) is when a private company offers its shares to the public for the first time. It allows companies to raise capital from public investors and provides liquidity to existing shareholders."
+            
+            # Check for trading signal queries
+            if any(phrase in cleaned_query.lower() for phrase in ['trading signal', 'buy signal', 'sell signal', 'when to buy', 'when to sell']):
+                symbol = self.get_stock_symbol(cleaned_query)
+                if symbol:
+                    data = self.get_trading_signals(symbol)
+                    if data:
+                        response = f"Trading Signals for {data['symbol']}:\n"
+                        response += f"Current Price: ₹{data['current_price']:.2f}\n"
+                        response += f"RSI Signal: {data['signals']['RSI_Signal']}\n"
+                        response += f"MACD Signal: {data['signals']['MACD_Signal']}\n"
+                        response += f"Bollinger Bands Signal: {data['signals']['BB_Signal']}\n"
+                        if 'Prediction_Signal' in data['signals']:
+                            response += f"Prediction Signal: {data['signals']['Prediction_Signal']}\n"
+                        response += f"Overall Signal: {data['overall_signal']}"
+                        return response
+                return "Please specify which stock's trading signals you'd like to know about."
+            
+            # Check for portfolio analysis queries
+            if any(word in cleaned_query.lower() for word in ['portfolio', 'my stocks', 'my investments']):
+                portfolio_symbols = ['RELIANCE', 'TCS', 'INFY', 'HDFCBANK']  # You can make this dynamic
+                data = self.get_portfolio_analysis(portfolio_symbols)
+                if data:
+                    response = "Portfolio Analysis:\n"
+                    for symbol, details in data['stocks'].items():
+                        response += f"\n{symbol}:\n"
+                        response += f"Price: ₹{details['price']:.2f}\n"
+                        response += f"Change: {details['change_pct']:+.2f}%\n"
+                        response += f"P/E Ratio: {details['pe_ratio']:.2f}\n"
+                    response += f"\nTotal Value: ₹{data['total_value']:.2f}"
+                    response += f"\nTotal Change: {data['total_change_pct']:+.2f}%"
+                    return response
+                return "Unable to fetch portfolio analysis at the moment."
+            
+            # Check for watchlist queries
+            if any(word in cleaned_query.lower() for word in ['watchlist', 'watch list']):
+                watchlist_symbols = ['RELIANCE', 'TCS', 'INFY', 'HDFCBANK']  # You can make this dynamic
+                data = self.get_watchlist_analysis(watchlist_symbols)
+                if data:
+                    response = "Watchlist Analysis:\n"
+                    for symbol, details in data['stocks'].items():
+                        response += f"\n{symbol}:\n"
+                        response += f"Price: ₹{details['price']:.2f}\n"
+                        response += f"Change: {details['change_pct']:+.2f}%\n"
+                        response += f"Volume: {details['volume']:,}\n"
+                        response += f"P/E Ratio: {details['pe_ratio']:.2f}\n"
+                    if data['alerts']:
+                        response += "\nAlerts:\n"
+                        for alert in data['alerts']:
+                            response += f"- {alert}\n"
+                    return response
+                return "Unable to fetch watchlist analysis at the moment."
+            
+            # Get intent and sentiment
+            intent, confidence, sentiment = self.classify_intent(cleaned_query)
+            
+            # Extract stock symbol
+            symbol = self.get_stock_symbol(cleaned_query)
+            
+            # Get relevant data based on intent
+            data = None
+            if intent == 'price_query' and symbol:
+                data = self.get_stock_details(symbol)
+            elif intent == 'news_query' and symbol:
+                data = self.fetch_company_news(symbol)
+            elif intent == 'term_query':
+                for term, explanation in self.market_terms.items():
+                    if term in cleaned_query:
+                        data = {'term': term, 'explanation': explanation}
+                        break
+            elif intent in ['analysis_query', 'summary_query'] and symbol:
+                data = {'symbol': symbol}
+            
+            # Generate response
+            if not symbol and intent in ['price_query', 'news_query', 'analysis_query', 'summary_query', 'sentiment_analysis']:
+>>>>>>> b6047da6a02cac92003587009a2e085480af2c48
                 return "Could you please specify the full company name or stock symbol?"
             
             response = self.generate_detailed_response(intent, data, sentiment)
             return response
+<<<<<<< HEAD
             
         except Exception as e:
             logging.error(f"Error generating response: {str(e)}")
@@ -1461,10 +2072,13 @@ class IndianStockChatbot:
             
             response = self.generate_detailed_response(intent, data, sentiment)
             return response
+=======
+>>>>>>> b6047da6a02cac92003587009a2e085480af2c48
             
         except Exception as e:
             logging.error(f"Error processing query: {str(e)}")
             return "I'm having trouble understanding. Could you please rephrase your question?"
+<<<<<<< HEAD
 
     def _load_portfolio(self) -> dict:
         """Load user portfolio from storage"""
@@ -1546,6 +2160,8 @@ class IndianStockChatbot:
         except Exception as e:
             logging.error(f"Error adding to watchlist: {str(e)}")
             return False
+=======
+>>>>>>> b6047da6a02cac92003587009a2e085480af2c48
 
 def main():
     try:
