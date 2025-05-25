@@ -615,7 +615,7 @@ def show_chat():
                         st.session_state.history.append((user_input, bot_response))
                         st.session_state.last_input = user_input
                         st.session_state['bot_loading'] = False
-                        st.experimental_rerun()
+                        st.rerun()
                     except Exception as e:
                         st.error(f"Error processing query: {str(e)}")
                         st.session_state.history.append((user_input, "I'm having trouble processing your request. Please try again."))
@@ -625,7 +625,7 @@ def show_chat():
         if st.button("Clear Chat", key="clear_button"):
             st.session_state.history = []
             st.session_state.last_input = ""
-            st.experimental_rerun()
+            st.rerun()
 
     with col2:
         st.markdown('<div class="section-card">', unsafe_allow_html=True)
@@ -669,7 +669,7 @@ def show_chat():
             for i, search in enumerate(recent_searches):
                 if st.button(search, key=f"recent_search_{i}_{hash(search)}"):
                     st.session_state.user_input = search
-                    st.experimental_rerun()
+                    st.rerun()
         else:
             st.info("No recent searches")
         st.markdown('</div>', unsafe_allow_html=True)
