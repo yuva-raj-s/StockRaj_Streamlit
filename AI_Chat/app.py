@@ -596,7 +596,7 @@ def show_chat():
         for i, suggestion in enumerate(st.session_state.suggestions):
             if cols[i % 4].button(suggestion, key=f"suggestion_{i}", help="Click to use this suggestion"):
                 st.session_state.user_input = suggestion
-                st.experimental_rerun()
+                st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
         # Visually separate input area
