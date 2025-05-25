@@ -16,3 +16,4 @@ feedparser
 transformers
 torch
 googlenews
+tf-keras
