@@ -17,4 +17,4 @@ transformers
 torch
 googlenews
 tf-keras
-fuzzy-wuzzy
+fuzzywuzzy
