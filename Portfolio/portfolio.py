@@ -172,7 +172,7 @@ def add_transaction(symbol, quantity, price, date, transaction_type="BUY", notes
         
         save_portfolio(portfolio)
         st.success(f"Transaction added successfully for {normalized_symbol}")
-        st.experimental_rerun()  # Force a rerun to update the display
+        st.rerun  # Force a rerun to update the display
         
     except Exception as e:
         logger.error(f"Error adding transaction: {str(e)}")
@@ -565,7 +565,7 @@ def _display_portfolio_overview(portfolio):
         portfolio["notes"] = {}
         save_portfolio(portfolio)
         st.success("Portfolio cleared!")
-        st.experimental_rerun()
+        st.rerun
     
     # Calculate portfolio metrics
     metrics = calculate_portfolio_metrics(portfolio)
@@ -634,7 +634,7 @@ def _display_transactions(portfolio):
         
         if st.form_submit_button("Add Transaction"):
             add_transaction(symbol, quantity, price, date, transaction_type, notes)
-            st.experimental_rerun()
+            st.rerun
         
     # Display transaction history
     st.subheader("Transaction History")
@@ -682,7 +682,7 @@ def _display_goals(portfolio):
                 "status": "In Progress"
             })
             save_portfolio(portfolio)
-            st.experimental_rerun()
+            st.rerun
     
     # Display goals
     st.subheader("Your Goals")
