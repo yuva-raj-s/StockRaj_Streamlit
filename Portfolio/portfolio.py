@@ -172,7 +172,7 @@ def add_transaction(symbol, quantity, price, date, transaction_type="BUY", notes
         
         save_portfolio(portfolio)
         st.success(f"Transaction added successfully for {normalized_symbol}")
-        st.rerun()  # Force a rerun to update the display
+        st.experimental_rerun()  # Force a rerun to update the display
         
     except Exception as e:
         logger.error(f"Error adding transaction: {str(e)}")

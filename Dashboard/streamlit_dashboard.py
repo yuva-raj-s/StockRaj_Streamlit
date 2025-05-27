@@ -226,4 +226,4 @@ if __name__ == "__main__":
 
 # Add auto-refresh
 # time.sleep(15)  # Refresh every 15 seconds
-# st.rerun() 
+# st.experimental_rerun() 
