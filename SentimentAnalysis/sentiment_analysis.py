@@ -102,13 +102,6 @@ def analyze_article_sentiment(article):
     return article
 
 def calculate_time_weight(article_date_str):
-    """
-    기사 시간 기준으로 가중치 계산 
-    - 1시간 내 기사는 24% 가중치
-    - 시간이 지날수록 1%씩 감소 (최소 1%)
-    - 예: 1시간 내 기사 = 24%, 10시간 전 기사 = 15%, 24시간 전 기사 = 1%
-    - 24시간 이상이면 1%로 고정
-    """
     try:
         # 기사 날짜 문자열 파싱 (다양한 형식 처리)
         date_formats = [
@@ -153,17 +146,7 @@ def calculate_time_weight(article_date_str):
         return 0.01  # 오류 발생 시 최소 가중치 적용
 
 def calculate_sentiment_score(sentiment_label, time_weight):
-    """
-    감성 레이블에 따른 기본 점수 계산 및 시간 가중치 적용
-    - positive: +3점
-    - neutral: 0점
-    - negative: -3점
     
-    시간 가중치는 백분율로 적용 (기본 점수에 가중치 % 만큼 추가)
-    예: 
-    - 1시간 내 긍정 기사: 3점 + (3 * 24%) = 3 + 0.72 = 3.72점
-    - 10시간 전 부정 기사: -3점 + (-3 * 15%) = -3 - 0.45 = -3.45점
-    """
     base_score = {
         'positive': 3,
         'neutral': 0,

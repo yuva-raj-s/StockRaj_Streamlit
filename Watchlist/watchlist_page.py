@@ -52,7 +52,7 @@ def _display_watchlist(watchlist_manager):
                         symbol = selected_symbol.split(" - ")[0]
                         watchlist_manager.add_to_watchlist(symbol)
                         st.success(f"Added {symbol} to watchlist!")
-                        st.experimental_rerun()
+                        st.rerun()
             else:
                 st.info("No stocks found matching your search.")
         
@@ -78,13 +78,13 @@ def _display_watchlist(watchlist_manager):
             for symbol in watchlist_data['Symbol']:
                 if st.button(f"Remove {symbol}", key=f"remove_{symbol}"):
                     watchlist_manager.remove_from_watchlist(f"{symbol}.NS")
-                    st.experimental_rerun()
+                    st.rerun()
             # Add clear all button
             if st.button("Clear Entire Watchlist", key="clear_watchlist"):
                 watchlist_manager.watchlist = []
                 watchlist_manager._save_watchlist()
                 st.success("Watchlist cleared!")
-                st.experimental_rerun()
+                st.rerun()
         else:
             st.info("Your watchlist is empty. Add some stocks to get started!")
     
@@ -174,7 +174,7 @@ def _display_price_alerts(alert_manager):
                 symbol = alert['symbol'].replace('.NS', '')
                 if st.button(f"Remove Alert for {symbol}", key=f"remove_alert_{alert['symbol']}"):
                     alert_manager.remove_alert(alert['symbol'])
-                    st.experimental_rerun()
+                    st.rerun()
     else:
         st.info("No active alerts. Add some to get notified!")
 

@@ -160,7 +160,7 @@ def show_dashboard():
     with col2:
         if st.button("🔄 Refresh", key="refresh_news"):
             st.cache_data.clear()
-            st.experimental_rerun()
+            st.rerun()
     
     try:
         # Initialize session state for pagination if not exists
@@ -215,7 +215,7 @@ def show_dashboard():
             if len(news_data) == 5:  # If we got a full page of news
                 if st.button("Load More", key="load_more_news"):
                     st.session_state.news_offset += 5
-                    st.experimental_rerun()
+                    st.rerun()
         else:
             st.warning("No news available at the moment.")
     except Exception as e:
@@ -226,4 +226,4 @@ if __name__ == "__main__":
 
 # Add auto-refresh
 # time.sleep(15)  # Refresh every 15 seconds
-# st.experimental_rerun() 
+# st.rerun() 

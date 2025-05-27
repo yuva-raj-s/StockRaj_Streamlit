@@ -1091,14 +1091,14 @@ class IndianStockChatbot:
                     
                     # Add sector performance
                     if data.get('sector_performance'):
-                        response.append("\nSector Performance:")
+                        response.append("\n\nSector Performance:")
                         for sector, perf in data['sector_performance'].items():
-                            response.append(f"{sector}: {perf['change_pct']:+.2f}%")
+                            response.append(f"\n{sector}: {perf['change_pct']:+.2f}%")
                     
                     if data['advance_decline']['ratio'] != float('inf'):
-                        response.append(f"\nAdvance-Decline Ratio: {data['advance_decline']['ratio']:.2f}")
+                        response.append(f"\n\nAdvance-Decline Ratio: {data['advance_decline']['ratio']:.2f}")
                     
-                    response.append(f"\nLast Updated: {data['last_updated']}")
+                    response.append(f"\n\nLast Updated: {data['last_updated']}")
                     return "\n".join(response)
             
             elif intent == 'sentiment_analysis' and data:
@@ -1207,6 +1207,64 @@ class IndianStockChatbot:
             
             # Clean and normalize the query
             cleaned_query = self.clean_query(user_input)
+            
+            # Check for market activity queries
+            if any(phrase in cleaned_query.lower() for phrase in ['market activity', 'market status', 'market overview', 'show market']):
+                data = self.get_market_activity()
+                if data:
+                    response = "Market Activity Overview:\n"
+                    response += f"\nNifty 50: ₹{data['nifty']['current']:.2f} ({data['nifty']['change_pct']:+.2f}%)"
+                    response += f"\nHigh: ₹{data['nifty']['high']:.2f}, Low: ₹{data['nifty']['low']:.2f}"
+                    response += f"\nSensex: ₹{data['sensex']['current']:.2f} ({data['sensex']['change_pct']:+.2f}%)"
+                    response += f"\nHigh: ₹{data['sensex']['high']:.2f}, Low: ₹{data['sensex']['low']:.2f}"
+                    
+                    if data.get('sector_performance'):
+                        response += "\n\nSector Performance:"
+                        for sector, perf in data['sector_performance'].items():
+                            response += f"\n{sector}: {perf['change_pct']:+.2f}%"
+                    
+                    if data['advance_decline']['ratio'] != float('inf'):
+                        response += f"\n\nAdvance-Decline Ratio: {data['advance_decline']['ratio']:.2f}"
+                    
+                    response += f"\n\nLast Updated: {data['last_updated']}"
+                    return response
+                return "Unable to fetch market activity at the moment."
+            
+            # Check for sentiment analysis queries
+            if 'sentiment' in cleaned_query.lower():
+                symbol = self.get_stock_symbol(cleaned_query)
+                if symbol:
+                    data = self.get_sentiment_analysis(symbol)
+                    if data:
+                        if 'error' in data:
+                            return f"Error: {data['error']}"
+                        
+                        response = (
+                            f"Sentiment Analysis for {data['symbol']}:\n"
+                            f"Current Price: ₹{data['current_price']:.2f} ({data['price_change']:+.2f}%)\n"
+                            f"Overall Sentiment Score: {data['sentiment_score']:.2f}\n"
+                            f"Market Context: {data['market_context']}\n\n"
+                            f"News Analysis:\n"
+                            f"- Positive News: {data['positive']}\n"
+                            f"- Negative News: {data['negative']}\n"
+                            f"- Neutral News: {data['neutral']}\n"
+                            f"Total News Analyzed: {data['total_news']}\n"
+                        )
+                        
+                        if data.get('recent_news'):
+                            response += "\nRecent News:\n"
+                            for article in data['recent_news']:
+                                response += (
+                                    f"• {article['title']}\n"
+                                    f"  Sentiment: {article['sentiment'].upper()} "
+                                    f"(Confidence: {article['confidence']:.2f})\n"
+                                    f"  Time: {article['date']}\n"
+                                )
+                        
+                        response += f"\nLast Updated: {data['last_updated']}"
+                        return response
+                    return f"Unable to fetch sentiment analysis for {symbol} at the moment."
+                return "Please specify which stock's sentiment you'd like to know about."
             
             # Check for sector performance queries
             if any(word in cleaned_query.lower() for word in ['sector performance', 'sector', 'sectors']):
