@@ -3,70 +3,164 @@ import pandas as pd
 import yfinance as yf
 from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout
+from tensorflow.keras.layers import LSTM, Dense, Dropout, Bidirectional
+from tensorflow.keras.callbacks import EarlyStopping
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 from datetime import datetime, timedelta
-from ta.trend import MACD
-from ta.momentum import RSIIndicator
-import ta
+from ta.trend import MACD, SMAIndicator, EMAIndicator
+from ta.momentum import RSIIndicator, StochasticOscillator
+from ta.volatility import BollingerBands, AverageTrueRange
+from ta.volume import VolumeWeightedAveragePrice
 from scipy import stats
 
-def fetch_stock_data(ticker: str, period: str = "2y") -> pd.DataFrame:
+def fetch_stock_data(ticker: str, period: str = "2y", interval: str = "1d") -> pd.DataFrame:
     """Fetch historical stock data from Yahoo Finance"""
     try:
         stock = yf.Ticker(f"{ticker}.NS")
-        df = stock.history(period=period, interval="1d")
+        
+        # Adjust period based on interval to ensure enough data points
+        if interval == "1mo":
+            period = "5y"  # Get more data for monthly analysis
+        elif interval == "1wk":
+            period = "3y"  # Get more data for weekly analysis
+        
+        df = stock.history(period=period, interval=interval)
         if df.empty:
             raise ValueError("No data found for this ticker")
+            
+        # Ensure we have enough data points
+        if len(df) < 60:  # Minimum required data points
+            raise ValueError(f"Insufficient data points. Got {len(df)}, need at least 60.")
+            
+        # Handle missing values
+        df = df.fillna(method='ffill')  # Forward fill missing values
+        df = df.fillna(method='bfill')  # Backward fill any remaining missing values
+        
         return df
     except Exception as e:
         raise ValueError(f"Error fetching data: {str(e)}")
 
-def calculate_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    """Calculate technical indicators"""
-    # MACD
-    macd = MACD(df['Close'])
-    df['MACD'] = macd.macd()
-    df['MACD_Signal'] = macd.macd_signal()
-    df['MACD_Hist'] = macd.macd_diff()
-    
-    # RSI
-    rsi = RSIIndicator(df['Close'])
-    df['RSI'] = rsi.rsi()
-    
-    # Bollinger Bands
-    df['BB_Upper'] = ta.volatility.bollinger_hband(df['Close'])
-    df['BB_Lower'] = ta.volatility.bollinger_lband(df['Close'])
-    df['BB_Middle'] = ta.volatility.bollinger_mavg(df['Close'])
-    
-    # Moving Averages
-    df['SMA_20'] = ta.trend.sma_indicator(df['Close'], window=20)
-    df['SMA_50'] = ta.trend.sma_indicator(df['Close'], window=50)
-    df['SMA_200'] = ta.trend.sma_indicator(df['Close'], window=200)
-    
-    return df
+def calculate_technical_indicators(df: pd.DataFrame, timeframe: str = "1d") -> pd.DataFrame:
+    """Calculate technical indicators with timeframe-specific parameters"""
+    try:
+        if timeframe == '1d':
+            # Daily parameters
+            ma_period = 20
+            ema_period = 50
+            rsi_period = 14
+            bb_period = 20
+            atr_period = 14
+            vwap_period = 20
+        elif timeframe == '1wk':
+            # Weekly parameters
+            ma_period = 13  # ~3 months
+            ema_period = 26  # ~6 months
+            rsi_period = 9
+            bb_period = 13
+            atr_period = 13
+            vwap_period = 13
+        else:  # Monthly
+            # Monthly parameters - adjusted for fewer data points
+            ma_period = 6   # ~6 months
+            ema_period = 12  # ~1 year
+            rsi_period = 6
+            bb_period = 6
+            atr_period = 6
+            vwap_period = 6
+            
+            # Ensure periods don't exceed available data
+            max_period = len(df) // 2
+            ma_period = min(ma_period, max_period)
+            ema_period = min(ema_period, max_period)
+            rsi_period = min(rsi_period, max_period)
+            bb_period = min(bb_period, max_period)
+            atr_period = min(atr_period, max_period)
+            vwap_period = min(vwap_period, max_period)
+        
+        # Moving Averages
+        df['SMA'] = SMAIndicator(df['Close'], window=ma_period).sma_indicator()
+        df['EMA'] = EMAIndicator(df['Close'], window=ema_period).ema_indicator()
+        
+        # MACD with timeframe-specific parameters
+        macd_fast = max(5, int(ema_period/4))
+        macd_slow = max(10, int(ema_period/2))
+        macd_signal = max(5, int(ema_period/6))
+        macd = MACD(df['Close'], window_slow=macd_slow, window_fast=macd_fast, window_sign=macd_signal)
+        df['MACD'] = macd.macd()
+        df['MACD_Signal'] = macd.macd_signal()
+        
+        # RSI
+        df['RSI'] = RSIIndicator(df['Close'], window=rsi_period).rsi()
+        
+        # Bollinger Bands
+        bb = BollingerBands(df['Close'], window=bb_period, window_dev=2)
+        df['BB_Upper'] = bb.bollinger_hband()
+        df['BB_Mid'] = bb.bollinger_mavg()
+        df['BB_Lower'] = bb.bollinger_lband()
+        
+        # Volatility Stop (ATR based)
+        atr = AverageTrueRange(df['High'], df['Low'], df['Close'], window=atr_period)
+        df['ATR'] = atr.average_true_range()
+        df['VStop_Long'] = df['High'].rolling(atr_period).max() - 3 * df['ATR']
+        df['VStop_Short'] = df['Low'].rolling(atr_period).min() + 3 * df['ATR']
+        
+        # Volume Weighted Average Price
+        df['VWAP'] = VolumeWeightedAveragePrice(
+            high=df['High'],
+            low=df['Low'],
+            close=df['Close'],
+            volume=df['Volume'],
+            window=vwap_period
+        ).volume_weighted_average_price()
+        
+        # Handle any remaining NaN values
+        df = df.fillna(method='ffill')
+        df = df.fillna(method='bfill')
+        
+        return df
+    except Exception as e:
+        raise ValueError(f"Error calculating technical indicators: {str(e)}")
 
 def calculate_fibonacci_levels(df: pd.DataFrame):
-    """Calculate Fibonacci retracement levels"""
+    """Calculate Fibonacci retracement levels based on recent swing highs and lows"""
     lookback_period = min(60, len(df))
     
-    swing_high = df['High'].rolling(window=lookback_period).max().iloc[-1]
-    swing_low = df['Low'].rolling(window=lookback_period).min().iloc[-1]
+    # Find swing high and low
+    swing_high_idx = df['High'].rolling(window=lookback_period).apply(lambda x: x.argmax(), raw=True).iloc[-1]
+    swing_high = df.iloc[int(swing_high_idx)]['High']
+    swing_high_date = df.index[int(swing_high_idx)]
     
-    diff = swing_high - swing_low
-    levels = {
-        '0.0': swing_low,
-        '0.236': swing_low + 0.236 * diff,
-        '0.382': swing_low + 0.382 * diff,
-        '0.5': swing_low + 0.5 * diff,
-        '0.618': swing_low + 0.618 * diff,
-        '0.786': swing_low + 0.786 * diff,
-        '1.0': swing_high
+    swing_low_idx = df['Low'].rolling(window=lookback_period).apply(lambda x: x.argmin(), raw=True).iloc[-1]
+    swing_low = df.iloc[int(swing_low_idx)]['Low']
+    swing_low_date = df.index[int(swing_low_idx)]
+    
+    # Determine trend
+    if swing_high_date > swing_low_date:
+        trend = 'uptrend'
+        fib_range = swing_high - swing_low
+        base_price = swing_low
+    else:
+        trend = 'downtrend'
+        fib_range = swing_high - swing_low
+        base_price = swing_high
+    
+    # Calculate Fibonacci levels
+    fib_levels = {
+        '0.0': swing_high if trend == 'downtrend' else swing_low,
+        '0.236': base_price + (0.236 * fib_range * (-1 if trend == 'downtrend' else 1)),
+        '0.382': base_price + (0.382 * fib_range * (-1 if trend == 'downtrend' else 1)),
+        '0.5': base_price + (0.5 * fib_range * (-1 if trend == 'downtrend' else 1)),
+        '0.618': base_price + (0.618 * fib_range * (-1 if trend == 'downtrend' else 1)),
+        '0.786': base_price + (0.786 * fib_range * (-1 if trend == 'downtrend' else 1)),
+        '1.0': swing_low if trend == 'downtrend' else swing_high,
+        '1.272': base_price + (1.272 * fib_range * (-1 if trend == 'downtrend' else 1)),
+        '1.414': base_price + (1.414 * fib_range * (-1 if trend == 'downtrend' else 1)),
+        '1.618': base_price + (1.618 * fib_range * (-1 if trend == 'downtrend' else 1)),
     }
     
-    return levels
+    return fib_levels, trend, swing_high, swing_low, swing_high_date, swing_low_date
 
 def detect_anomalies(df: pd.DataFrame, window: int = 20, threshold: float = 2.5) -> pd.DataFrame:
     """Detect price anomalies using multiple indicators and filters"""
@@ -125,91 +219,111 @@ def detect_anomalies(df: pd.DataFrame, window: int = 20, threshold: float = 2.5)
         logger.error(f"Error in anomaly detection: {str(e)}")
         return df
 
-def generate_signals(df: pd.DataFrame) -> pd.DataFrame:
-    """Generate buy/sell signals based on technical indicators with more selective criteria"""
+def generate_signals(df: pd.DataFrame, timeframe: str = "1d") -> pd.DataFrame:
+    """Generate buy/sell signals with timeframe-specific thresholds"""
+    if timeframe == '1d':
+        rsi_buy = 50
+        rsi_sell = 50
+        min_vol_multiplier = 1.2
+    elif timeframe == '1wk':
+        rsi_buy = 45
+        rsi_sell = 55
+        min_vol_multiplier = 1.5
+    else:  # Monthly
+        rsi_buy = 40
+        rsi_sell = 60
+        min_vol_multiplier = 2.0
+    
     df['Signal'] = 0  # 0: no signal, 1: buy, -1: sell
     
-    # MACD Signal (only on crossover)
-    df['MACD_Cross'] = ((df['MACD'] > df['MACD_Signal']) & 
-                        (df['MACD'].shift(1) <= df['MACD_Signal'].shift(1)))
-    df['MACD_Cross_Down'] = ((df['MACD'] < df['MACD_Signal']) & 
-                            (df['MACD'].shift(1) >= df['MACD_Signal'].shift(1)))
+    # Volume filter
+    vol_avg = df['Volume'].rolling(20).mean()
+    volume_ok = df['Volume'] > (vol_avg * min_vol_multiplier)
     
-    # RSI Signal (only on extreme values with confirmation)
-    rsi_oversold = (df['RSI'] < 30) & (df['RSI'].shift(1) >= 30)
-    rsi_overbought = (df['RSI'] > 70) & (df['RSI'].shift(1) <= 70)
+    # Buy Signals (multiple confirmations)
+    buy_conditions = (
+        (df['Close'] > df['EMA']) & 
+        (df['Close'] > df['VWAP']) & 
+        (df['RSI'] > rsi_buy) & 
+        (df['MACD'] > df['MACD_Signal']) &
+        (df['Close'] > df['VStop_Long']) &
+        volume_ok
+    )
     
-    # Bollinger Bands Signal (with confirmation)
-    bb_buy = (df['Close'] < df['BB_Lower']) & (df['Close'].shift(1) >= df['BB_Lower'].shift(1))
-    bb_sell = (df['Close'] > df['BB_Upper']) & (df['Close'].shift(1) <= df['BB_Upper'].shift(1))
+    # Sell Signals (multiple confirmations)
+    sell_conditions = (
+        (df['Close'] < df['EMA']) & 
+        (df['Close'] < df['VWAP']) & 
+        (df['RSI'] < rsi_sell) & 
+        (df['MACD'] < df['MACD_Signal']) &
+        (df['Close'] < df['VStop_Short']) &
+        volume_ok
+    )
     
-    # Moving Average Crossover
-    ma_cross_up = (df['SMA_20'] > df['SMA_50']) & (df['SMA_20'].shift(1) <= df['SMA_50'].shift(1))
-    ma_cross_down = (df['SMA_20'] < df['SMA_50']) & (df['SMA_20'].shift(1) >= df['SMA_50'].shift(1))
-    
-    # Combine signals with confirmation
-    df.loc[df['MACD_Cross'] & (df['RSI'] < 60), 'Signal'] = 1  # Buy signal
-    df.loc[df['MACD_Cross_Down'] & (df['RSI'] > 40), 'Signal'] = -1  # Sell signal
-    
-    # Add RSI signals only if they align with trend
-    df.loc[rsi_oversold & (df['Close'] > df['SMA_50']), 'Signal'] = 1
-    df.loc[rsi_overbought & (df['Close'] < df['SMA_50']), 'Signal'] = -1
-    
-    # Add Bollinger Bands signals with confirmation
-    df.loc[bb_buy & (df['RSI'] < 40), 'Signal'] = 1
-    df.loc[bb_sell & (df['RSI'] > 60), 'Signal'] = -1
-    
-    # Add Moving Average crossover signals
-    df.loc[ma_cross_up & (df['Volume'] > df['Volume'].rolling(20).mean()), 'Signal'] = 1
-    df.loc[ma_cross_down & (df['Volume'] > df['Volume'].rolling(20).mean()), 'Signal'] = -1
+    df.loc[buy_conditions, 'Signal'] = 1
+    df.loc[sell_conditions, 'Signal'] = -1
     
     return df
 
-def prepare_data(df: pd.DataFrame, sequence_length: int = 60):
-    """Prepare data for LSTM model"""
-    data = df['Close'].values.reshape(-1, 1)
+def prepare_data(df: pd.DataFrame, sequence_length: int = 30):
+    """Prepare data for LSTM model with more features"""
+    # Feature engineering
+    df['Return'] = df['Close'].pct_change()
+    df['DayOfWeek'] = df.index.dayofweek if hasattr(df.index, 'dayofweek') else pd.to_datetime(df.index).dayofweek
+    df['Month'] = df.index.month if hasattr(df.index, 'month') else pd.to_datetime(df.index).month
+    # Add more technical indicators if not already present
+    if 'EMA' not in df.columns:
+        df['EMA'] = EMAIndicator(df['Close'], window=20).ema_indicator()
+    if 'SMA' not in df.columns:
+        df['SMA'] = SMAIndicator(df['Close'], window=20).sma_indicator()
+    if 'MACD' not in df.columns:
+        macd = MACD(df['Close'])
+        df['MACD'] = macd.macd()
+    if 'RSI' not in df.columns:
+        df['RSI'] = RSIIndicator(df['Close']).rsi()
+    # Select features
+    features = ['Close', 'Volume', 'RSI', 'MACD', 'EMA', 'SMA', 'Return', 'DayOfWeek', 'Month']
+    data = df[features].dropna().values
     scaler = MinMaxScaler()
     scaled_data = scaler.fit_transform(data)
-    
     X, y = [], []
     for i in range(sequence_length, len(scaled_data)):
-        X.append(scaled_data[i-sequence_length:i, 0])
-        y.append(scaled_data[i, 0])
-    
+        X.append(scaled_data[i-sequence_length:i])
+        y.append(scaled_data[i, 0])  # Predict close
     X, y = np.array(X), np.array(y)
-    X = np.reshape(X, (X.shape[0], X.shape[1], 1))
-    
     return X, y, scaler
 
-def create_lstm_model(sequence_length: int):
-    """Create and compile LSTM model"""
+def create_lstm_model(sequence_length: int, n_features: int):
+    """Create and compile enhanced Bidirectional LSTM model"""
     model = Sequential([
-        LSTM(units=50, return_sequences=True, input_shape=(sequence_length, 1)),
-        Dropout(0.2),
-        LSTM(units=50, return_sequences=True),
-        Dropout(0.2),
-        LSTM(units=50),
-        Dropout(0.2),
-        Dense(units=1)
+        Bidirectional(LSTM(32, return_sequences=True), input_shape=(sequence_length, n_features)),
+        Dropout(0.3),
+        Bidirectional(LSTM(32)),
+        Dropout(0.3),
+        Dense(16, activation='relu'),
+        Dense(1)
     ])
-    
     model.compile(optimizer='adam', loss='mean_squared_error')
     return model
 
 def predict_future_prices(model, last_sequence, scaler, days_to_predict: int = 20):
-    """Predict future prices"""
+    """Predict future prices using all features, only inverse-transforming the 'Close' column."""
     future_predictions = []
     current_sequence = last_sequence.copy()
-    
+    n_features = current_sequence.shape[1]
     for _ in range(days_to_predict):
-        next_pred = model.predict(current_sequence.reshape(1, -1, 1))
+        next_pred = model.predict(current_sequence.reshape(1, -1, n_features), verbose=0)
+        # Prepare the next input: shift left, append new prediction for 'Close', keep other features as last
+        next_input = current_sequence.copy()
+        next_input = np.roll(next_input, -1, axis=0)
+        # Replace only the 'Close' value in the last row with the predicted value
+        next_input[-1, 0] = next_pred[0, 0]
+        current_sequence = next_input
         future_predictions.append(next_pred[0, 0])
-        current_sequence = np.roll(current_sequence, -1)
-        current_sequence[-1] = next_pred[0, 0]
-    
-    future_predictions = np.array(future_predictions).reshape(-1, 1)
-    future_predictions = scaler.inverse_transform(future_predictions)
-    
+    # Inverse transform: create dummy array with predicted closes in the first column, zeros elsewhere
+    dummy = np.zeros((len(future_predictions), n_features))
+    dummy[:, 0] = future_predictions
+    future_predictions = scaler.inverse_transform(dummy)[:, 0]
     return future_predictions
 
 def create_interactive_plot(df, predictions, ticker, fib_levels):
@@ -259,26 +373,18 @@ def create_interactive_plot(df, predictions, ticker, fib_levels):
     ), secondary_y=True)
 
     # Add technical indicators with consistent styling
-    if 'SMA_20' in df.columns:
+    if 'SMA' in df.columns:
         fig.add_trace(go.Scatter(
-            x=df.index, y=df['SMA_20'],
-            name='SMA 20',
+            x=df.index, y=df['SMA'],
+            name='SMA',
             line=dict(color='#ffa500', width=1.5),
             showlegend=True
         ), secondary_y=False)
 
-    if 'SMA_50' in df.columns:
+    if 'EMA' in df.columns:
         fig.add_trace(go.Scatter(
-            x=df.index, y=df['SMA_50'],
-            name='SMA 50',
-            line=dict(color='#ff00ff', width=1.5),
-            showlegend=True
-        ), secondary_y=False)
-
-    if 'EMA_20' in df.columns:
-        fig.add_trace(go.Scatter(
-            x=df.index, y=df['EMA_20'],
-            name='EMA 20',
+            x=df.index, y=df['EMA'],
+            name='EMA',
             line=dict(color='#00ffff', width=1.5),
             showlegend=True
         ), secondary_y=False)
@@ -442,14 +548,21 @@ def main():
             layout="wide"
         )
     
-    st.title('Advanced Stock Price Prediction and Analysis')
-    
+    st.title('📊 Stock Price Prediction & Insights')
+    st.markdown("""
+    Welcome! This app uses advanced AI and technical analysis to help you understand stock trends and make smarter decisions. 
+    <span style='color:#FFD700;'>No experience needed!</span> 🚀
+    """, unsafe_allow_html=True)
+
     # Search and Controls Section - 2 columns like tickertape/moneycontrol
-    col1, col2 = st.columns([3, 1])
+    col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
         ticker = st.text_input('Enter Stock Ticker (e.g., RELIANCE):', 'RELIANCE',
                              help="Enter NSE stock symbol (e.g., RELIANCE, TCS, INFY)")
     with col2:
+        timeframe = st.selectbox('Timeframe', ['1d', '1wk'], index=0,
+                               help="Select the timeframe for analysis")
+    with col3:
         prediction_days = st.selectbox('Days to Predict', [5, 10, 15, 20, 30], index=3)
     
     # Additional parameters in a collapsible section
@@ -458,17 +571,17 @@ def main():
         with col1:
             anomaly_threshold = st.slider('Anomaly Detection Threshold', 2.0, 4.0, 2.5, 0.1)
         with col2:
-            sequence_length = st.selectbox('Sequence Length', [30, 60, 90, 120], index=1)
+            sequence_length = st.selectbox('Sequence Length', [30, 60, 90, 120], index=0)
     
     if st.button('Analyze', type='primary'):
         try:
             with st.spinner('Fetching and analyzing data...'):
                 # Fetch and process data
-                df = fetch_stock_data(ticker)
-                df = calculate_technical_indicators(df)
+                df = fetch_stock_data(ticker, interval=timeframe)
+                df = calculate_technical_indicators(df, timeframe)
                 df = detect_anomalies(df, threshold=anomaly_threshold)
-                df = generate_signals(df)
-                fib_levels = calculate_fibonacci_levels(df)
+                df = generate_signals(df, timeframe)
+                fib_levels, trend, swing_high, swing_low, swing_high_date, swing_low_date = calculate_fibonacci_levels(df)
                 
                 # Stock Chart & Price Analysis Section
                 st.markdown("""
@@ -503,17 +616,30 @@ def main():
                 
                 # Prepare and train LSTM model
                 X, y, scaler = prepare_data(df, sequence_length)
-                model = create_lstm_model(sequence_length)
-                
+                n_features = X.shape[2]
+                model = create_lstm_model(sequence_length, n_features)
+                # Train/validation split
+                split = int(0.85 * len(X))
+                X_train, X_val = X[:split], X[split:]
+                y_train, y_val = y[:split], y[split:]
+                # Early stopping
+                early_stop = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
                 # Train model with progress bar
                 progress_bar = st.progress(0)
                 epochs = 50
                 for epoch in range(epochs):
-                    model.fit(X, y, epochs=1, batch_size=32, verbose=0)
+                    history = model.fit(
+                        X_train, y_train,
+                        validation_data=(X_val, y_val),
+                        epochs=1, batch_size=8, verbose=0,
+                        callbacks=[early_stop]
+                    )
                     progress_bar.progress((epoch + 1) / epochs)
-                
+                    # Early stopping check
+                    if early_stop.stopped_epoch > 0:
+                        break
                 # Make predictions
-                last_sequence = X[-1]
+                last_sequence = X[-1]  # shape: (sequence_length, n_features)
                 predictions = predict_future_prices(model, last_sequence, scaler, prediction_days)
                 
                 # Create and display interactive plot
@@ -532,47 +658,14 @@ def main():
                 with col1:
                     st.metric('Current Price', f'₹{df["Close"].iloc[-1]:.2f}')
                 with col2:
-                    st.metric('Predicted Price', f'₹{predictions[-1][0]:.2f}')
+                    st.metric('Predicted Price', f'₹{predictions[-1]:.2f}')
                 with col3:
-                    price_change = ((predictions[-1][0] - df["Close"].iloc[-1]) / df["Close"].iloc[-1]) * 100
+                    price_change = ((predictions[-1] - df["Close"].iloc[-1]) / df["Close"].iloc[-1]) * 100
                     st.metric('Predicted Change', f'{price_change:+.2f}%', 
                             delta=f'{price_change:+.2f}%',
                             delta_color="normal")
                 with col4:
                     st.metric('RSI', f'{df["RSI"].iloc[-1]:.2f}')
-                
-                # Next 5 Days Predictions Section
-                st.markdown("""
-                <div style='background-color: #1e2130; padding: 1rem; border-radius: 10px; margin: 1rem 0;'>
-                    <h3 style='color: #ffffff; margin: 0 0 1rem 0;'>Next 5 Days Price Predictions</h3>
-                </div>
-                """, unsafe_allow_html=True)
-
-                last_date = df.index[-1]
-                future_dates = [last_date + timedelta(days=x+1) for x in range(5)]
-                current_price = df['Close'].iloc[-1]
-                
-                prediction_data = []
-                for i, (date, pred_price) in enumerate(zip(future_dates, predictions[:5])):
-                    daily_change = ((pred_price[0] - current_price) / current_price) * 100 if i == 0 else \
-                                 ((pred_price[0] - predictions[i-1][0]) / predictions[i-1][0]) * 100
-                    prediction_data.append({
-                        'Date': date.strftime('%Y-%m-%d'),
-                        'Predicted Price': pred_price[0],
-                        'Daily Change': daily_change,
-                        'Cumulative Change': ((pred_price[0] - current_price) / current_price) * 100
-                    })
-                
-                prediction_df = pd.DataFrame(prediction_data)
-                st.dataframe(
-                    prediction_df.style.format({
-                        'Predicted Price': '₹{:.2f}',
-                        'Daily Change': '{:+.2f}%',
-                        'Cumulative Change': '{:+.2f}%'
-                    }).background_gradient(subset=['Daily Change', 'Cumulative Change'], 
-                                         cmap='RdYlGn'),
-                    use_container_width=True
-                )
                 
                 # Technical Analysis Section
                 st.markdown("""
@@ -593,6 +686,58 @@ def main():
                 </div>
                 """, unsafe_allow_html=True)
                 
+                # Display trend and anomaly summary side by side
+                col_trend, col_anomaly = st.columns(2)
+
+                with col_trend:
+                    st.markdown(f"""
+                    <div style='background-color: #1e2130; padding: 1.5rem; border-radius: 10px; margin: 1rem 0;'>
+                        <h3 style='color: #ffffff; margin: 0 0 1rem 0; font-size: 1.2rem;'>Trend Analysis</h3>
+                        <div style='display: flex; flex-direction: column; gap: 0.5rem;'>
+                            <div style='color: #ffffff; font-weight: 500;'>Current Trend: <span style='color: #00ff00; font-weight: bold; font-size: 1.1rem;'>{trend.upper()}</span> ✅</div>
+                            <div style='color: #ffffff; font-weight: 500;'>Swing High: <span style='color: #00ff00;'>₹{swing_high:.2f}</span> <span style='color: #888888;'>on {swing_high_date.strftime('%Y-%m-%d')}</span></div>
+                            <div style='color: #ffffff; font-weight: 500;'>Swing Low: <span style='color: #ff0000;'>₹{swing_low:.2f}</span> <span style='color: #888888;'>on {swing_low_date.strftime('%Y-%m-%d')}</span></div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    st.info("""
+                    **What does this mean?**
+                    - **UPTREND**: The stock is generally moving up 📈
+                    - **DOWNTREND**: The stock is generally moving down 📉
+                    - **Swing High/Low**: Recent highest and lowest prices
+                    """)
+
+                with col_anomaly:
+                    st.markdown(f"""
+                    <div style='background-color: #1e2130; padding: 1.5rem; border-radius: 10px; margin: 1rem 0;'>
+                        <h3 style='color: #ffffff; margin: 0 0 1rem 0; font-size: 1.2rem;'>Anomaly Summary</h3>
+                        <div style='display: flex; flex-direction: column; gap: 0.5rem;'>
+                            <div style='color: #00ff00; font-weight: 500;'>Bullish Anomalies: <span style='color: #ffffff; font-weight: bold;'>{len(df[df['Anomaly_Type'] == 'Bullish'])}</span></div>
+                            <div style='color: #ff0000; font-weight: 500;'>Bearish Anomalies: <span style='color: #ffffff; font-weight: bold;'>{len(df[df['Anomaly_Type'] == 'Bearish'])}</span></div>
+                            <div style='color: #ffffff; font-weight: 500; margin-top: 0.5rem;'>Average Anomaly Strength: <span style='color: #ffd700; font-weight: bold;'>{df['Anomaly_Strength'].mean():.1f}%</span></div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    st.info("""
+                    **What is an anomaly?**
+                    - A sudden, unusual price move (up or down)
+                    - **Bullish**: Big upward jump 🚀
+                    - **Bearish**: Big downward drop ⚠️
+                    """)
+                
+                # Display Fibonacci levels
+                st.markdown("""
+                <div style='background-color: #1e2130; padding: 1rem; border-radius: 10px; margin: 1rem 0;'>
+                    <h3 style='color: #ffffff; margin: 0 0 1rem 0;'>Fibonacci Retracement Levels</h3>
+                </div>
+                """, unsafe_allow_html=True)
+
+                fib_df = pd.DataFrame.from_dict(fib_levels, orient='index', columns=['Price'])
+                st.dataframe(
+                    fib_df.style.format({'Price': '₹{:.2f}'}),
+                    use_container_width=True
+                )
+                
                 # Display anomalies with more details
                 st.markdown("""
                 <div style='background-color: #1e2130; padding: 1rem; border-radius: 10px; margin: 1rem 0;'>
@@ -612,34 +757,30 @@ def main():
                         }).background_gradient(subset=['Price_Change_Pct'], cmap='RdYlGn'),
                         use_container_width=True
                     )
-                    
-                    # Add anomaly summary
-                    bullish_count = len(recent_anomalies[recent_anomalies['Anomaly_Type'] == 'Bullish'])
-                    bearish_count = len(recent_anomalies[recent_anomalies['Anomaly_Type'] == 'Bearish'])
-                    
-                    st.markdown(f"""
-                    <div style='background-color: #1e2130; padding: 1rem; border-radius: 10px; margin: 1rem 0;'>
-                        <h4 style='color: #ffffff; margin: 0 0 0.5rem 0;'>Anomaly Summary</h4>
-                        <p style='color: #00ff00; margin: 0;'>Bullish Anomalies: {bullish_count}</p>
-                        <p style='color: #ff0000; margin: 0;'>Bearish Anomalies: {bearish_count}</p>
-                        <p style='color: #ffffff; margin: 0.5rem 0 0 0;'>Average Anomaly Strength: {recent_anomalies['Anomaly_Strength'].mean():.1f}%</p>
-                    </div>
-                    """, unsafe_allow_html=True)
                 else:
                     st.info("No significant price movements detected")
                 
-                # Display Fibonacci levels
-                st.markdown("""
-                <div style='background-color: #1e2130; padding: 1rem; border-radius: 10px; margin: 1rem 0;'>
-                    <h3 style='color: #ffffff; margin: 0 0 1rem 0;'>Fibonacci Retracement Levels</h3>
-                </div>
-                """, unsafe_allow_html=True)
+                # --- Section: Glossary ---
+                with st.expander("ℹ️ What do these terms mean?"):
+                    st.markdown("""
+                    - **Trend**: The general direction the stock price is moving.
+                    - **Swing High/Low**: Recent highest/lowest prices.
+                    - **Anomaly**: A sudden, unusual price movement.
+                    - **RSI**: Measures if a stock is overbought or oversold.
+                    - **MACD**: Shows momentum and possible trend changes.
+                    - **Fibonacci Levels**: Price levels where the stock might reverse or pause.
+                    - **Signal**: Our model's suggestion to buy, sell, or wait.
+                    """)
 
-                fib_df = pd.DataFrame.from_dict(fib_levels, orient='index', columns=['Price'])
-                st.dataframe(
-                    fib_df.style.format({'Price': '₹{:.2f}'}),
-                    use_container_width=True
-                )
+                # --- Section: Next Steps ---
+                st.markdown("""
+                ---
+                #### 💡 What should I do next?
+                - Use these insights as a guide, not a guarantee.
+                - Consider watching the stock for a few days if unsure.
+                - Always do your own research or consult a financial advisor before making big decisions.
+                - Investing is risky—never invest money you can't afford to lose!
+                """)
                 
         except Exception as e:
             st.error(f'Error: {str(e)}')
