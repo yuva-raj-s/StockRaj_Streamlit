@@ -18,8 +18,16 @@ import requests
 from bs4 import BeautifulSoup
 import json
 # from AI_Analysis.Current_Data.current_data import display_current_data # This is a duplicate import
-from SentimentAnalysis.sentiment_analysis import analyze_asset_sentiment as analyze_sentiment
-from lstm_model.lstm_prediction import main as show_lstm_analysis
+from SentimentAnalysis.sentiment_analysis import analyze_asset_sentiment
+from lstm_model.lstm_prediction import (
+    fetch_stock_data as lstm_fetch_data,
+    calculate_technical_indicators as lstm_calculate_indicators,
+    prepare_data as lstm_prepare_data,
+    create_lstm_model,
+    predict_future_prices,
+    create_interactive_plot,
+    calculate_fibonacci_levels
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -471,15 +479,63 @@ def show_ai_analysis():
 
     # --- Tab 2: Prediction & Signals ---
     with tab2:
-        st.header("Prediction & Signals (LSTM)")
-        show_lstm_analysis()
+        st.header("LSTM Price Prediction & Signals")
+        pred_symbol = st.text_input("Enter stock symbol for prediction", "RELIANCE", key="ai_analysis_symbol2")
+        if pred_symbol and st.button("Run Prediction", key="run_prediction_btn"):
+            try:
+                with st.spinner('Fetching data and training LSTM model... This may take a moment.'):
+                    # Fetch data
+                    df_pred = lstm_fetch_data(pred_symbol, period="2y", interval="1d")
+                    
+                    # Calculate indicators
+                    df_pred = lstm_calculate_indicators(df_pred)
+                    
+                    # Calculate Fibonacci levels
+                    fib_levels, trend, swing_high, swing_low, swing_high_date, swing_low_date = calculate_fibonacci_levels(df_pred)
+                    
+                    # Prepare data for LSTM
+                    sequence_length = 60
+                    X, y, scaler = lstm_prepare_data(df_pred, sequence_length)
+                    
+                    if X.shape[0] > 0:
+                        # Create and train model
+                        n_features = X.shape[2]
+                        model = create_lstm_model(sequence_length, n_features)
+                        
+                        # Simple train, no split for this integration
+                        model.fit(X, y, epochs=50, batch_size=32, verbose=0)
+                        
+                        # Predict future prices
+                        last_sequence = X[-1]
+                        prediction_days = 20
+                        predictions = predict_future_prices(model, last_sequence, scaler, prediction_days)
+                        
+                        # Display plot
+                        st.success(f"LSTM model trained and prediction complete for {pred_symbol}.")
+                        fig = create_interactive_plot(df_pred, predictions, pred_symbol, fib_levels)
+                        st.plotly_chart(fig, use_container_width=True)
+
+                        # Display prediction metrics
+                        st.subheader("Prediction Summary")
+                        col1, col2, col3 = st.columns(3)
+                        current_price = df_pred['Close'].iloc[-1]
+                        predicted_price = predictions[-1]
+                        price_change_pct = ((predicted_price - current_price) / current_price) * 100
+                        col1.metric("Current Price", f"₹{current_price:.2f}")
+                        col2.metric(f"Predicted Price ({prediction_days} days)", f"₹{predicted_price:.2f}")
+                        col3.metric("Predicted Change", f"{price_change_pct:+.2f}%")
+                    else:
+                        st.warning("Not enough data to train the prediction model.")
+
+            except Exception as e:
+                st.error(f"An error occurred during prediction: {e}")
 
     # --- Tab 3: Sentiment Analysis ---
     with tab3:
         st.header("Sentiment Analysis & News")
         symbol3 = st.text_input("Enter stock symbol (e.g., RELIANCE, TCS):", "RELIANCE", key="ai_analysis_symbol3")
         if symbol3 and st.button("Analyze Sentiment", key="analyze_sentiment_btn"):
-            show_sentiment_section(symbol3)
+            analyze_asset_sentiment(symbol3)
 
 if __name__ == "__main__":
     show_ai_analysis() 
