@@ -1,0 +1,35 @@
+name: StockRaj Scheduled Tasks
+
+on:
+  schedule:
+    # Schedule for pre-caching (e.g., 8:30 AM IST is 3:00 AM UTC)
+    - cron: '0 3 * * 1-5' # Runs at 3:00 UTC (8:30 AM IST) on weekdays
+    # Schedule for EOD report (e.g., 4:30 PM IST is 11:00 AM UTC)
+    - cron: '0 11 * * 1-5' # Runs at 11:00 UTC (4:30 PM IST) on weekdays
+    # Schedule for archiving/retraining (e.g., every Sunday at midnight UTC)
+    - cron: '0 0 * * 0' # Runs at midnight UTC every Sunday
+
+jobs:
+  run-scheduled-tasks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Pre-Cache Task (Weekdays)
+        if: github.event.schedule == '0 3 * * 1-5'
+        run: |
+          curl -X POST \
+          -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+          "${{ secrets.APP_URL }}/api/cron/pre-cache"
+
+      - name: Trigger EOD Report Task (Weekdays)
+        if: github.event.schedule == '0 11 * * 1-5'
+        run: |
+          curl -X POST \
+          -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+          "${{ secrets.APP_URL }}/api/cron/generate-report"
+
+      - name: Trigger Archive and Retrain Task (Weekly)
+        if: github.event.schedule == '0 0 * * 0'
+        run: |
+          curl -X POST \
+          -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+          "${{ secrets.APP_URL }}/api/cron/archive-and-retrain"
