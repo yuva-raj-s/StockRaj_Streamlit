@@ -1422,56 +1422,26 @@ class IndianStockChatbot:
     def is_market_open(self) -> bool:
         """Check if Indian market is currently open with real-time data"""
         try:
-            now = datetime.now()
-            
-            # Check if it's a weekend
-            if now.weekday() >= 5:  # Saturday (5) or Sunday (6)
+            # Get the current time in India's timezone (IST is UTC+5:30)
+            now_utc = datetime.utcnow()
+            now_ist = now_utc + timedelta(hours=5, minutes=30)
+
+            # Check if it's a weekday and within market hours
+            if now_ist.weekday() >= 5:  # Saturday or Sunday
                 return False
-            
-            # Check if it's a holiday (you can add more holidays)
-            holidays = [
-                "2024-01-26",  # Republic Day
-                "2024-03-08",  # Mahashivratri
-                "2024-03-25",  # Holi
-                "2024-04-09",  # Ram Navami
-                "2024-04-11",  # Mahavir Jayanti
-                "2024-04-17",  # Good Friday
-                "2024-05-01",  # Maharashtra Day
-                "2024-05-20",  # Lok Sabha Elections
-                "2024-06-17",  # Bakri Id
-                "2024-07-17",  # Muharram
-                "2024-08-15",  # Independence Day
-                "2024-10-02",  # Gandhi Jayanti
-                "2024-11-01",  # Diwali-Laxmi Pujan
-                "2024-11-15",  # Gurunanak Jayanti
-                "2024-12-25"   # Christmas
-            ]
-            
-            if now.strftime("%Y-%m-%d") in holidays:
+
+            market_open_time = now_ist.replace(hour=9, minute=15, second=0, microsecond=0).time()
+            market_close_time = now_ist.replace(hour=15, minute=30, second=0, microsecond=0).time()
+
+            if not (market_open_time <= now_ist.time() <= market_close_time):
                 return False
-            
-            # Define market hours
-            market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
-            market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
-            
-            # Check if current time is within market hours
-            is_open = market_open <= now <= market_close
-            
-            # Additional check using NSE data to confirm market status
-            try:
-                nifty = yf.Ticker("^NSEI")
-                nifty_data = nifty.history(period="1d", interval="1m")
-                if not nifty_data.empty:
-                    last_update = nifty_data.index[-1]
-                    time_diff = (now - last_update).total_seconds() / 60
-                    # If last update is more than 5 minutes old, market might be closed
-                    if time_diff > 5:
-                        is_open = False
-            except:
-                pass  # If we can't get NSE data, rely on time-based check
-            
-            return is_open
-            
+
+            # Check for recent trading activity on Nifty 50 as a proxy for market being open
+            nifty = yf.Ticker("^NSEI")
+            # Fetch data for the last 5 minutes. If it's empty, the market is likely closed (e.g., holiday).
+            hist = nifty.history(period="5m", interval="1m")
+            return not hist.empty
+
         except Exception as e:
             logging.error(f"Error checking market status: {str(e)}")
             # Fallback to time-based check if there's an error

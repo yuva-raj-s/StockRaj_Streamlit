@@ -36,7 +36,7 @@ import sys
 project_root = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, project_root)
 
-from sooraj.lstm_prediction import (
+from lstm_model.lstm_prediction import (
     calculate_technical_indicators,
     detect_anomalies,
     generate_signals,
@@ -925,7 +925,7 @@ async def chat_with_bot(request: ChatRequest):
             "response": response
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Error in chat processing: {e}")
 
 # Add technical analysis endpoints from Sooraj's code
 @app.post("/api/technical-analysis/analyze-stock")
