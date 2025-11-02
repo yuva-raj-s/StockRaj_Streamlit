@@ -2,13 +2,8 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import sys
-
-# Add project root to the Python path
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-sys.path.insert(0, project_root)
-import logging
 import os
+import logging
 from .advanced_charting.advanced_chart import plot_advanced_chart
 from .Current_Data.current_data import display_current_data
 from .Prediction_Signals.prediction_signals import display_prediction_signals
@@ -22,7 +17,7 @@ from textblob import TextBlob
 import requests
 from bs4 import BeautifulSoup
 import json
-from AI_Analysis.Current_Data.current_data import display_current_data
+# from AI_Analysis.Current_Data.current_data import display_current_data # This is a duplicate import
 from SentimentAnalysis.sentiment_analysis import analyze_asset_sentiment as analyze_sentiment
 from lstm_model.lstm_prediction import main as show_lstm_analysis
 

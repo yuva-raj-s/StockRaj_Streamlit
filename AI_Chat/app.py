@@ -30,23 +30,9 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-# Add the current directory to Python path
-current_dir = os.path.dirname(os.path.abspath(__file__))
-if current_dir not in sys.path:
-    sys.path.append(current_dir)
-
-from chatbot import IndianStockChatbot as MLChatbot  # Import using absolute path
-
-# Add Portfolio and Watchlist directories to sys.path for import
-portfolio_dir = os.path.abspath(os.path.join(current_dir, '../Portfolio'))
-watchlist_dir = os.path.abspath(os.path.join(current_dir, '../Watchlist'))
-if portfolio_dir not in sys.path:
-    sys.path.append(portfolio_dir)
-if watchlist_dir not in sys.path:
-    sys.path.append(watchlist_dir)
-
-from portfolio import load_portfolio, calculate_portfolio_metrics
-from watchlist_operations import WatchlistManager
+from AI_Chat.chatbot import IndianStockChatbot as MLChatbot
+from Portfolio.portfolio import load_portfolio, calculate_portfolio_metrics
+from Watchlist.watchlist_operations import WatchlistManager
 
             "sbi": "SBIN",
 
@@ -350,7 +336,11 @@ def show_chat():
         # User input
         user_input = st.text_input("Type your question:", key="user_input")
         # Send button
-        send_clicked = st.button("Send", key="send_button") or (user_input and st.session_state.get('last_input') != user_input)
+        send_clicked = False
+        if 'user_input' in st.session_state and st.session_state.user_input:
+             send_clicked = st.button("Send", key="send_button") or (st.session_state.user_input and st.session_state.get('last_input') != st.session_state.user_input)
+        else:
+             send_clicked = st.button("Send", key="send_button")
         if send_clicked:
             if user_input.strip():
                 st.session_state['bot_loading'] = True
