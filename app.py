@@ -1,4 +1,9 @@
 import streamlit as st
+import sys
+import os
+
+# Add project root to the Python path
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 from Dashboard.streamlit_dashboard import show_dashboard
 from Market_Activity.market_activity import show_market_activity
 from Watchlist.watchlist_page import show_watchlist
