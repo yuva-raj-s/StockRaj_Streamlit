@@ -28,9 +28,11 @@ import logging
 import requests
 from urllib.parse import urlencode
 import time
-from functools import lru_cache
+from cachetools import TTLCache, cached
 import random
 import sys
+import subprocess
+from fastapi import Header, Depends
 
 # Get the absolute path of the project root directory
 project_root = os.path.dirname(os.path.abspath(__file__))
@@ -45,6 +47,10 @@ from lstm_model.lstm_prediction import (
     create_lstm_model,
     predict_future_prices
 )
+
+# --- Security for Scheduled Tasks ---
+# Store your secret key in an environment variable for security
+CRON_SECRET = os.getenv("CRON_SECRET", "your-super-secret-key")
 
 app = FastAPI(
     title="StockRaj API",
@@ -227,8 +233,11 @@ class YahooFinanceManager:
         return cls._session
 
 # Cache for stock data to reduce API calls
-@lru_cache(maxsize=100)
-def get_cached_stock_data(symbol: str, period: str) -> dict:
+# Cache API responses for 60 seconds to avoid rate limiting
+api_cache = TTLCache(maxsize=128, ttl=60)
+
+@cached(api_cache)
+def get_cached_stock_data(symbol: str, period: str, interval: str) -> dict:
     """Cache stock data to reduce API calls"""
     session = YahooFinanceManager.get_session()
     
@@ -236,7 +245,7 @@ def get_cached_stock_data(symbol: str, period: str) -> dict:
     params = {
         "range": period,
         "interval": "1d",
-        "includePrePost": False,
+        "includePrePost": "false",
         "events": "div,splits"
     }
     
@@ -244,6 +253,7 @@ def get_cached_stock_data(symbol: str, period: str) -> dict:
     return response.json()
 
 # Dashboard Endpoints
+@cached(api_cache)
 @app.get("/api/dashboard/marquee")
 async def get_marquee_data():
     """Get live market data for marquee stocks"""
@@ -264,6 +274,7 @@ async def get_marquee_data():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@cached(api_cache)
 @app.get("/api/dashboard/market-overview")
 async def get_market_overview():
     """Get market overview data for major indices"""
@@ -287,6 +298,7 @@ async def get_market_overview():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@cached(api_cache)
 @app.get("/api/dashboard/top-stocks")
 async def get_top_indian_stocks():
     """Get top performing Indian stocks"""
@@ -1664,3 +1676,41 @@ if __name__ == "__main__":
         timeout_keep_alive=30,
         loop="asyncio"
     ) 
+
+# --- Endpoints for Scheduled Tasks (Cron Jobs) ---
+
+async def verify_cron_secret(x_cron_secret: str = Header(None)):
+    """Dependency to verify the secret key for cron jobs."""
+    if not x_cron_secret or x_cron_secret != CRON_SECRET:
+        raise HTTPException(status_code=403, detail="Invalid or missing secret for cron job")
+
+@app.post("/api/cron/pre-cache", dependencies=[Depends(verify_cron_secret)])
+async def trigger_pre_cache():
+    """
+    Webhook to trigger the pre-caching of market data.
+    To be called by a scheduler before market open.
+    """
+    logging.info("Pre-cache task triggered via API.")
+    # Run the script in a non-blocking way
+    subprocess.Popen([sys.executable, "scheduled_tasks.py", "precache"])
+    return {"status": "success", "message": "Pre-cache task initiated."}
+
+@app.post("/api/cron/archive-and-retrain", dependencies=[Depends(verify_cron_secret)])
+async def trigger_archive_and_retrain():
+    """
+    Webhook to trigger data archiving and model retraining.
+    To be called by a scheduler daily/weekly.
+    """
+    logging.info("Archive and retrain task triggered via API.")
+    subprocess.Popen([sys.executable, "scheduled_tasks.py", "archive"])
+    return {"status": "success", "message": "Archive and retrain task initiated."}
+
+@app.post("/api/cron/generate-report", dependencies=[Depends(verify_cron_secret)])
+async def trigger_generate_report():
+    """
+    Webhook to trigger the generation of the EOD report.
+    To be called by a scheduler after market close.
+    """
+    logging.info("Generate report task triggered via API.")
+    subprocess.Popen([sys.executable, "scheduled_tasks.py", "report"])
+    return {"status": "success", "message": "Report generation task initiated."}

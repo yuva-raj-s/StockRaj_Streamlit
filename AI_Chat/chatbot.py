@@ -23,6 +23,13 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout
 import json
 from textblob import TextBlob
+from lstm_model.lstm_prediction import (
+    calculate_technical_indicators as calculate_indicators_master,
+    prepare_data as prepare_data_master,
+    create_lstm_model as create_lstm_master,
+    predict_future_prices as predict_prices_master
+)
+
 
 warnings.filterwarnings("ignore")
 
@@ -35,17 +42,8 @@ class IndianStockChatbot:
     def __init__(self):
         try:
             print("Initializing chatbot...")
-            
-            # Initialize models
-            self.models = {
-                'intent': pipeline("text-classification", model="distilbert-base-uncased-finetuned-sst-2-english"),
-                'sentiment': pipeline("sentiment-analysis", model="mrm8488/distilroberta-finetuned-financial-news-sentiment-analysis"),
-                'text_qa': pipeline("question-answering", model="distilbert-base-cased-distilled-squad")
-            }
-            
-            # Initialize prediction model
-            self.prediction_model = self._initialize_prediction_model()
-            
+            self._models = {} # Use a private dictionary to store loaded models
+
             # Initialize history
             self.history = []
             
@@ -156,68 +154,29 @@ class IndianStockChatbot:
             
         except Exception as e:
             logging.error(f"Error initializing chatbot: {str(e)}")
-            print(f"Error loading models: {str(e)}")
+            print(f"Error during chatbot initialization: {str(e)}")
             # Initialize with minimal functionality
-            self.models = {
-                'intent': lambda x: [{'label': 'general_query', 'score': 1.0}],
-                'sentiment': lambda x: [{'label': 'neutral', 'score': 1.0}],
-                'text_qa': lambda x: x[:200] + "..."
-            }
+            self._models = {}
             self.prediction_model = None
             self.history = []
             self.stock_symbols = {}
             self.market_terms = {}
-            self.intent_patterns = {}
+            self.intent_patterns = {}            
 
-    def _initialize_prediction_model(self):
-        """Initialize the LSTM prediction model"""
-        try:
-            model = Sequential([
-                LSTM(units=50, return_sequences=True, input_shape=(60, 5)),
-                Dropout(0.2),
-                LSTM(units=50, return_sequences=False),
-                Dropout(0.2),
-                Dense(units=1)
-            ])
-            model.compile(optimizer='adam', loss='mean_squared_error')
-            return model
-        except Exception as e:
-            logging.error(f"Error initializing prediction model: {str(e)}")
-            return None
-
-    def _prepare_prediction_data(self, symbol: str) -> tuple:
-        """Prepare data for prediction"""
-        try:
-            # Get historical data
-            ticker = yf.Ticker(f"{symbol}.NS")
-            hist = ticker.history(period="1y")
-            
-            # Calculate technical indicators
-            df = pd.DataFrame(hist)
-            df['RSI'] = ta.momentum.RSIIndicator(df['Close']).rsi()
-            df['MACD'] = ta.trend.MACD(df['Close']).macd()
-            df['MACD_Signal'] = ta.trend.MACD(df['Close']).macd_signal()
-            df['BB_Upper'] = ta.volatility.BollingerBands(df['Close']).bollinger_hband()
-            df['BB_Lower'] = ta.volatility.BollingerBands(df['Close']).bollinger_lband()
-            
-            # Prepare features
-            features = ['Close', 'Volume', 'RSI', 'MACD', 'MACD_Signal']
-            data = df[features].values
-            
-            # Normalize data
-            scaler = MinMaxScaler()
-            scaled_data = scaler.fit_transform(data)
-            
-            # Create sequences
-            X, y = [], []
-            for i in range(60, len(scaled_data)):
-                X.append(scaled_data[i-60:i])
-                y.append(scaled_data[i, 0])
-            
-            return np.array(X), np.array(y), scaler
-        except Exception as e:
-            logging.error(f"Error preparing prediction data: {str(e)}")
-            return None, None, None
+    def get_model(self, model_name: str):
+        """Lazy load a model and return it."""
+        if model_name not in self._models:
+            print(f"Loading model: {model_name}...")
+            model_map = {
+                'intent': "distilbert-base-uncased-finetuned-sst-2-english",
+                'sentiment': "mrm8488/distilroberta-finetuned-financial-news-sentiment-analysis",
+                'text_qa': "distilbert-base-cased-distilled-squad"
+            }
+            if model_name in model_map:
+                self._models[model_name] = pipeline(model_map[model_name])
+            else:
+                raise ValueError(f"Model '{model_name}' not found.")
+        return self._models[model_name]
 
     def get_trading_signals(self, symbol: str) -> dict:
         """Generate trading signals using technical analysis and prediction"""
@@ -230,8 +189,7 @@ class IndianStockChatbot:
             hist = ticker.history(period="1y")
             
             # Calculate technical indicators
-            df = pd.DataFrame(hist)
-            df['RSI'] = ta.momentum.RSIIndicator(df['Close']).rsi()
+            df = calculate_indicators_master(pd.DataFrame(hist))
             df['MACD'] = ta.trend.MACD(df['Close']).macd()
             df['MACD_Signal'] = ta.trend.MACD(df['Close']).macd_signal()
             df['BB_Upper'] = ta.volatility.BollingerBands(df['Close']).bollinger_hband()
@@ -251,15 +209,17 @@ class IndianStockChatbot:
             }
             
             # Prepare prediction data
-            X, y, scaler = self._prepare_prediction_data(symbol)
-            if X is not None and self.prediction_model is not None:
+            X, y, scaler = prepare_data_master(df.copy(), sequence_length=60)
+            if X.shape[0] > 0:
+                n_features = X.shape[2]
+                prediction_model = create_lstm_master(sequence_length=60, n_features=n_features)
                 # Train model on recent data
-                self.prediction_model.fit(X, y, epochs=10, batch_size=32, verbose=0)
+                prediction_model.fit(X, y, epochs=10, batch_size=32, verbose=0)
                 
                 # Make prediction
                 last_sequence = X[-1:]
-                predicted_price = self.prediction_model.predict(last_sequence, verbose=0)
-                predicted_price = scaler.inverse_transform([[predicted_price[0][0], 0, 0, 0, 0]])[0][0]
+                future_prices = predict_prices_master(prediction_model, last_sequence, scaler, days_to_predict=1)
+                predicted_price = future_prices[0]
                 
                 # Calculate predicted change
                 price_change = ((predicted_price - current_price) / current_price) * 100

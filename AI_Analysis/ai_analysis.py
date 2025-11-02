@@ -18,8 +18,8 @@ import requests
 from bs4 import BeautifulSoup
 import json
 from AI_Analysis.Current_Data.current_data import display_current_data
-from SentimentAnalysis.sentiment_analysis import analyze_asset_sentiment
-from sooraj.lstm_prediction import main as lstm_main
+from SentimentAnalysis.sentiment_analysis import analyze_asset_sentiment as analyze_sentiment
+from lstm_model.lstm_prediction import main as show_lstm_analysis
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -472,7 +472,7 @@ def show_ai_analysis():
     # --- Tab 2: Prediction & Signals ---
     with tab2:
         st.header("Prediction & Signals (LSTM)")
-        lstm_main()
+        show_lstm_analysis()
 
     # --- Tab 3: Sentiment Analysis ---
     with tab3:

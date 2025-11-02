@@ -293,16 +293,21 @@ def prepare_data(df: pd.DataFrame, sequence_length: int = 30):
     X, y = np.array(X), np.array(y)
     return X, y, scaler
 
-def create_lstm_model(sequence_length: int, n_features: int):
+def create_lstm_model(sequence_length: int, n_features: int, lstm_units=[32, 32], dropout_rate=0.3):
     """Create and compile enhanced Bidirectional LSTM model"""
-    model = Sequential([
-        Bidirectional(LSTM(32, return_sequences=True), input_shape=(sequence_length, n_features)),
-        Dropout(0.3),
-        Bidirectional(LSTM(32)),
-        Dropout(0.3),
-        Dense(16, activation='relu'),
-        Dense(1)
-    ])
+    model = Sequential()
+    # Input layer
+    model.add(Bidirectional(LSTM(lstm_units[0], return_sequences=len(lstm_units) > 1), input_shape=(sequence_length, n_features)))
+    model.add(Dropout(dropout_rate))
+
+    # Hidden layers
+    for i in range(1, len(lstm_units)):
+        return_sequences = i < len(lstm_units) - 1
+        model.add(Bidirectional(LSTM(lstm_units[i], return_sequences=return_sequences)))
+        model.add(Dropout(dropout_rate))
+
+    model.add(Dense(16, activation='relu'))
+    model.add(Dense(1))
     model.compile(optimizer='adam', loss='mean_squared_error')
     return model
 

@@ -6,13 +6,10 @@ __pycache__/
 .Python
 env/
 venv/
+__pycache__/
 
 # Ignore sooraj.py
 sooraj.py
 # Ignore sooraj1.py
 sooraj1.py
-# Ignore stockraj.egg-info and __pycache__ folder
-stockraj.egg-info
-__pycache__
 # Ignore generated images
-*.png
