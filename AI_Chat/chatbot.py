@@ -23,7 +23,7 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout
 import json
 from textblob import TextBlob
-from lstm_model.lstm_prediction import (
+from LSTM_Model.lstm_prediction import (
     calculate_technical_indicators as calculate_indicators_master,
     prepare_data as prepare_data_master,
     create_lstm_model as create_lstm_master,
