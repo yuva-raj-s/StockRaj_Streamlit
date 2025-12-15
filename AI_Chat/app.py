@@ -34,8 +34,6 @@ from AI_Chat.chatbot import IndianStockChatbot as MLChatbot
 from Portfolio.portfolio import load_portfolio, calculate_portfolio_metrics
 from Watchlist.watchlist_operations import WatchlistManager
 
-            "sbi": "SBIN",
-
 def show_chat():
     """Display the AI chat page"""
     # Initialize session state
