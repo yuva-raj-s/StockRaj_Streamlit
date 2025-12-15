@@ -19,7 +19,7 @@ from bs4 import BeautifulSoup
 import json
 # from AI_Analysis.Current_Data.current_data import display_current_data # This is a duplicate import
 from SentimentAnalysis.sentiment_analysis import analyze_asset_sentiment
-from lstm_model.lstm_prediction import (
+from LSTM_Model.lstm_prediction import (
     fetch_stock_data as lstm_fetch_data,
     calculate_technical_indicators as lstm_calculate_indicators,
     prepare_data as lstm_prepare_data,
