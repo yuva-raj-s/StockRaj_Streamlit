@@ -27,7 +27,8 @@ from LSTM_Model.lstm_prediction import (
     predict_future_prices,
     create_interactive_plot,
     calculate_fibonacci_levels,
-    generate_signals
+    generate_signals,
+    detect_anomalies
 )
 
 # Configure logging
@@ -493,6 +494,9 @@ def show_ai_analysis():
                     
                     # Generates the 'Signal' column
                     df_pred = generate_signals(df_pred, "1d")
+
+                    # Generates 'Is_Anomaly' column
+                    df_pred = detect_anomalies(df_pred)
                     
                     # Calculate Fibonacci levels
                     fib_levels, trend, swing_high, swing_low, swing_high_date, swing_low_date = calculate_fibonacci_levels(df_pred)
@@ -539,7 +543,7 @@ def show_ai_analysis():
         st.header("Sentiment Analysis & News")
         symbol3 = st.text_input("Enter stock symbol (e.g., RELIANCE, TCS):", "RELIANCE", key="ai_analysis_symbol3")
         if symbol3 and st.button("Analyze Sentiment", key="analyze_sentiment_btn"):
-            analyze_asset_sentiment(symbol3)
+            show_sentiment_section(symbol3)
 
 if __name__ == "__main__":
     show_ai_analysis() 
