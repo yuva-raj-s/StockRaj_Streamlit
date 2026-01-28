@@ -26,7 +26,8 @@ from LSTM_Model.lstm_prediction import (
     create_lstm_model,
     predict_future_prices,
     create_interactive_plot,
-    calculate_fibonacci_levels
+    calculate_fibonacci_levels,
+    generate_signals
 )
 
 # Configure logging
@@ -489,6 +490,9 @@ def show_ai_analysis():
                     
                     # Calculate indicators
                     df_pred = lstm_calculate_indicators(df_pred)
+                    
+                    # Generates the 'Signal' column
+                    df_pred = generate_signals(df_pred, "1d")
                     
                     # Calculate Fibonacci levels
                     fib_levels, trend, swing_high, swing_low, swing_high_date, swing_low_date = calculate_fibonacci_levels(df_pred)
